@@ -15,7 +15,6 @@ library(rvest)
 library(corrplot)
 library(plotly)
 library(viridis)
-library(olsrr)
 
 source("utils/utils.R")
 
@@ -26,19 +25,19 @@ data_path  <-  here::here("data")
 # *******************
 
 # Team records/schedule
-team_records      <-  readRDS(here::here("data", "team_records.rds"))
-
-# Weekly Team defense
-team_defense      <- readRDS(here::here("data", "team_defense.rds"))
-
-# Weekly Team Fantasy points allowed by position
-fp_against        <- readRDS(here::here("data", "team_fp_against.rds"))
-
-# Weekly player stats
-player_stats      <- readRDS(here::here("data", "weekly_player_team_record.rds"))
-
-# Cumaltive fantasy points average per player and opponent defense
-fp_df             <- readRDS(here::here("data", "fp_model_data.rds"))
+# team_records      <-  readRDS(here::here("data", "team_records.rds"))
+# 
+# # Weekly Team defense
+# team_defense      <- readRDS(here::here("data", "team_defense.rds"))
+# 
+# # Weekly Team Fantasy points allowed by position
+# fp_against        <- readRDS(here::here("data", "team_fp_against.rds"))
+# 
+# # Weekly player stats
+# player_stats      <- readRDS(here::here("data", "weekly_player_team_record.rds"))
+# 
+# # Cumaltive fantasy points average per player and opponent defense
+# fp_df             <- readRDS(here::here("data", "fp_model_data.rds"))
 
 #
 football          <- readRDS(here::here("data", "football_wins.rds"))
@@ -76,7 +75,8 @@ win_total <-
 
 # ggplot() +
   # geom_point(data = win_total, aes(x = reorder(team, mean_wins), y = total_wins, color = team_color3))
-ggplot() +
+team_win_totals_plot <- 
+  ggplot() +
   geom_boxplot(data = win_total, aes(x = reorder(team, mean_wins), y = total_wins, fill = team_nick, color = team_nick)) +
   scale_fill_manual(
     breaks = win_total$team_nick,
@@ -85,8 +85,27 @@ ggplot() +
   scale_color_manual(
     breaks = win_total$team_nick,
     values = c(win_total$team_color2)
+  ) +
+  labs(
+    title = "Which teams win the most games?", 
+    subtitle = "Season Win Totals (1999 - 2021)",
+    x = "Team", 
+    y = "Season Win Totals"
+    # fill = ""
+  ) + 
+  apatheme +
+  # theme_bw() +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = -45)
   )
-
+team_win_totals_plot
+ggsave(
+  here::here("img", "team_win_totals.png"),
+  team_win_totals_plot,
+  width = 12,
+  height = 8
+  )
 # ***************************
 # ---- Season win totals ----
 # ***************************
@@ -178,6 +197,66 @@ third_downs <-
 
 ggplot() +
   geom_boxplot(data = win_total, aes(x = reorder(team, mean_wins), y = total_wins))
+
+# ****************
+# ---- QB EPA ----
+# ****************
+rm(qb_epa)
+epa <- 
+  football %>% 
+  dplyr::group_by(season, team) %>% 
+  dplyr::summarise(
+    qb_epa = mean(qb_epa, na.rm = T)
+  ) %>% 
+  dplyr::ungroup() %>% 
+  dplyr::group_by(team) %>% 
+  dplyr::mutate(
+    mean_qb_epa = mean(qb_epa, na.rm = T)
+  )  %>% 
+  dplyr::left_join(
+    nflfastR::teams_colors_logos,
+    by = c("team" = "team_abbr")
+  ) %>% 
+  dplyr::arrange(mean_qb_epa) %>% 
+  dplyr::ungroup()
+
+# ggplot() +
+# geom_point(data = win_total, aes(x = reorder(team, mean_wins), y = total_wins, color = team_color3))
+qb_epa_plot <-
+  ggplot() +
+  geom_hline(yintercept = 0, size = 1.5) +
+  geom_boxplot(data = epa,
+               aes(x = reorder(team, mean_qb_epa), 
+                   y = qb_epa, 
+                   fill = team_nick, color = team_nick)) +
+  scale_fill_manual(
+    breaks = epa$team_nick,
+    values = c(epa$team_color)
+  ) +
+  scale_color_manual(
+    breaks = epa$team_nick,
+    values = c(epa$team_color2)
+  ) +
+  labs(
+    title    = "Which teams have the best quarterbacks?", 
+    subtitle = "Average QB EPA per season (1999 - 2021)",
+    x        = "Team", 
+    y        = "Quarterback EPA"
+    # fill = ""
+  ) + 
+  apatheme +
+  # theme_bw() +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = -45)
+  )
+qb_epa_plot
+ggsave(
+  here::here("img", "qb_epa.png"),
+  qb_epa_plot,
+  width = 12,
+  height = 8
+)
 
 # ***************************
 # ---- Season win totals ----

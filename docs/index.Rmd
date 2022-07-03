@@ -1,0 +1,153 @@
+---
+title: "Title"
+author: "Author"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+# source("utils/find_google_drive.R") # drive_dir
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r, echo = FALSE}
+library(rmarkdown)
+library(knitr)
+library(ggplot2)
+library(dplyr)
+
+offense <- readRDS(here::here("data", "offensive.rds"))
+```
+
+
+# Intro
+My goal with this project was make an attempt at answering the age old sports question of **"So, Who is going to win this game?"** I wanted to see if I could use historic information about a teams offensive and defensive performances to garner an accurate prediction on whether or not they will win there upcoming game. 
+
+# Data Retrieval
+I pulled NFL play-by-play data together using the `nflFastR R package`. I then did some data cleaning and wrangling tasks to get the data into a usable format. 
+
+I started by getting the full play-by-play datasets from 1999-2021. Each year there are some ~50,000 plays run, and for each play, there are 372 columns of data giving information about what happened on that play. 
+
+# Explority Data Analysis
+
+Let's dig into some of the data and see what we can learn. 
+
+## Season win totals
+
+Below is a box plot showing the season win totals for each NFL team over the period of record, arranged by mean annual win total. It is not surprising to see the New England Patriots leading the league with an average of 12.6 wins per season. The Patriots are followed by the Steelers, Packers, Colts, Ravens, all teams that have seen consistent success over the last 23 years. At the bottom of the league are the Browns, Lions, Jaguars, and the Raiders. 
+
+<center>
+![](../img/team_win_totals.png)
+</center>
+
+## QB performances
+
+Now how about which team's quarterbacks have the highest EPA. EPA is a metric that determines how likely a team is to score points as a result of a play. If a QB does something good (long completion, run for a first down), then there team is more likely to score points on the ensuing play, thus Expected points were added (EPA is positive). On the other hand if a QB does something bad (incompletion, takes a big sack), then there team is less likely to score points on the ensuing play and expected points were removed (EPA is negative)
+
+Below is a plot showing the for each team, the average QB EPA across the all seasons. It is not suprising to see teams like the Patriots, Packers, and Colts at the top of the league in terms of average QB EPA seeing as though these teams had Hall of Fame Quarterbacks for most of the period of time, Tom Brady, Brett Favre/Aaron Rodgers, and Peyton Manning, respectively. This plot matches very closely with the above season win totals boxplot. The teams with the best quarterbacks tend to have the most total wins at the end of a season. 
+
+<center>
+![](../img/qb_epa.png)
+</center>
+
+# Features
+
+I decided I wanted to capture 3 key domains of features that may influence a teams likelihood to win an upcoming game:
+
+- Offense
+- Defense
+- Off the field factors
+
+### Offense
+ I calculated offensive and defensive statistics for every game a team played in the NFL from 1999 - 2021.
+
+
+```{r}
+knitr::kable(head(offense))
+
+off_table <- tibble::tibble(
+  Variable    = c("Points Scored in quarter 1, 2, 3, 4", 
+                  "Score Differential",
+                  "Time of Possesion", 
+                  "Third Down Conversion Rate", 
+                  "Turnovers",
+                  "QB EPA",
+                  "Scoring Drive percentage"
+                  ),
+  Type        = c("Numeric", "Numeric", "Numeric", "Numeric","Numeric", "Numeric","Numeric"),
+  Description = c("Total Points scored at the end of each quarter",
+                  "Average Score differential at the end of each quarter of the game",
+                  "Time of possesion as a percent of both teams possesion time",
+                  "Percent of 3rd downs converted by offense",
+                  "Total Turnovers by the offense (Fumbles lost + Interceptions",
+                  "Average Quarterback EPA across all plays in the game",
+                  "Percent of Drives that resulted in points" )
+)
+
+kableExtra::kable(off_table)
+```
+
+
+### Defense
+ I calculated offensive and defensive statistics for every game a team played in the NFL from 1999 - 2021.
+
+
+```{r}
+knitr::kable(head(offense))
+
+off_table <- tibble::tibble(
+  Variable    = c("Points Scored in quarter 1, 2, 3, 4", 
+                  "Score Differential",
+                  "Time of Possesion", 
+                  "Third Down Conversion Rate", 
+                  "Turnovers",
+                  "QB EPA",
+                  "Scoring Drive percentage"
+                  ),
+  Type        = c("Numeric", "Numeric", "Numeric", "Numeric","Numeric", "Numeric","Numeric"),
+  Description = c("Total Points scored at the end of each quarter",
+                  "Average Score differential at the end of each quarter of the game",
+                  "Time of possesion as a percent of both teams possesion time",
+                  "Percent of 3rd downs converted by offense",
+                  "Total Turnovers by the offense (Fumbles lost + Interceptions",
+                  "Average Quarterback EPA across all plays in the game",
+                  "Percent of Drives that resulted in points" )
+)
+
+kableExtra::kable(off_table)
+```
+
+### Off Field Factors
+ I calculated offensive and defensive statistics for every game a team played in the NFL from 1999 - 2021.
+
+
+```{r}
+# knitr::kable(head(defense))
+
+other_fact_table <- tibble::tibble(
+  Variable    = c("Home", "Division Game", "Rest days"
+                  ),
+  Type        = c("Binary", "Binary", "Factor"),
+  Description = c("Indicating if the team is the home team (1 = home, 0 = away",
+                  "Indicating if it is a division game (1 = division game, 0 = not division game",
+                  "Categorical factor indicating the amount of rest the team has between games, (Short rest < 7 days, 7 <= normal rest <= 8, long rest > 8 days"
+                  )
+)
+
+kableExtra::kable(other_fact_table)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

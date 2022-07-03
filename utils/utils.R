@@ -15,7 +15,43 @@ nfl_teams <- function() {
   )
   return(team_df)
 }
-
+# Making a theme
+apatheme <-
+  theme_bw()+
+  theme(
+    # panel.grid.major = element_blank(),
+    # panel.grid.minor = element_blank(),
+    # panel.border     = element_blank(),
+    axis.line        = element_line(),
+    text             = element_text(family='Helvetica'),
+    legend.title     = element_blank(),
+    plot.title       = element_text(color = "black", face = "bold", size = 16),
+    axis.title       = element_text(color = "black", face = "bold", size = 12),
+    axis.text.y      = element_text(color = "black"),
+    axis.text.x      = element_text(color = "black"),
+    strip.text.x     = element_text(color = "black",face = "bold"),
+    strip.text.y     = element_text(color = "black",face = "bold")
+  )
+# Making a theme
+simple_theme <-
+  theme_classic()+
+  theme(
+    # panel.grid.major = element_line(colour = "grey", linetype = "dashed"),
+    # panel.grid.minor = element_line(colour = "grey", linetype = "dashed"),
+    # panel.grid.major = element_blank(),
+    # panel.grid.minor = element_blank(),
+    # panel.border     = element_blank(),
+    axis.line        = element_line(),
+    text             = element_text(family='Helvetica'),
+    legend.title     = element_blank(),
+    legend.position  = "none",
+    plot.title       = element_text(color = "black", face = "bold", size = 16),
+    axis.title       = element_text(color = "black", face = "bold"),
+    axis.text.y      = element_text(color = "black", size = 12),
+    axis.text.x      = element_text(color = "black", size = 12),
+    strip.text.x     = element_text(color = "black",face = "bold"),
+    strip.text.y     = element_text(color = "black",face = "bold")
+  )
 scrape_pfr <- function(year) {
   
   logger::log_info("\n\nScraping Pro Football Reference...\n{year} Rushing Defense ")
