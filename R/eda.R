@@ -39,8 +39,11 @@ data_path  <-  here::here("data")
 # # Cumaltive fantasy points average per player and opponent defense
 # fp_df             <- readRDS(here::here("data", "fp_model_data.rds"))
 
-#
-football          <- readRDS(here::here("data", "football_wins.rds"))
+# Read in joined offense defense data
+# football     <- readRDS(here::here("data", "football_wins.rds"))
+football     <- readRDS(here::here("data", "football_wins2.rds"))
+offense      <- readRDS(here::here("data", "offensive.rds"))
+defense      <- readRDS(here::here("data", "defensive.rds"))
 
 # Add team colors for plotting
 football <- 
@@ -51,6 +54,7 @@ football <-
   )
 
 team_colors       <- nflfastR::teams_colors_logos
+
 
 # ***************************
 # ---- Season win totals ----
@@ -257,7 +261,94 @@ ggsave(
   width = 12,
   height = 8
 )
+# ************************************
+# ---- Win Correlation w/ Offense ----
+# ************************************
+# library(corrr)
+# x <-   
+#   football %>% 
+#   dplyr::select(win, home, div_game,qtr_pts_1:turnovers,top_pct, score_drives_pct) %>%
+#   correlate() %>%    # Create correlation data frame (cor_df)
+#   focus(-win, mirror = F) %>%  # Focus on cor_df without 'cyl' and 'vs'
+#   rearrange() %>%  # rearrange by correlations
+#   shave() 
+# rplot(x)
+off_cor <-
+  football %>% 
+  # na.omit() %>%
+  dplyr::select(win, home, div_game,qtr_pts_1:turnovers,top_pct, score_drives_pct) %>% 
+  cor(use =  "pairwise.complete.obs") %>% 
+  round(2) %>% 
+  reshape2::melt()
 
+off_cor_plot <- 
+  ggplot(data = off_cor, aes(x=Var1, y=Var2,
+                           fill=value)) +
+  geom_tile() + 
+  geom_text(aes(Var2, Var1, label = value),
+          color = "black", size = 4) +
+  scale_fill_gradient2(low="darkred", high="darkgreen", guide="colorbar") +
+  # viridis::scale_fill_viridis(direction = -1, option = "F") +
+  labs(
+    title = "Correlation matrix for NFL Offenses",
+    x = "",
+    y = "", 
+    fill = "Coefficient"
+  ) +
+  apatheme
+off_cor_plot
+ggsave(
+  here::here("img", "correlation_offense.png"),
+  off_cor_plot,
+  width = 12,
+  height = 8
+)
+  # viridis::scale_fill_viridis(direction = -1, option = "H")
+
+# ************************************
+# ---- Win Correlation w/ Defense ----
+# ************************************
+def_cor <-
+  football %>% 
+  # na.omit() %>%
+  dplyr::select(win, home, div_game,def_qtr_pts_1:def_turnovers, def_score_drives_pct) %>% 
+  # dplyr::select(win, home, div_game, contains("def")) %>% 
+  cor(use =  "pairwise.complete.obs") %>% 
+  round(2) %>% 
+  reshape2::melt()
+
+def_cor_plot <- 
+  ggplot(
+    data = def_cor, aes(
+      x    = Var1,
+      y    = Var2,
+      fill = value
+      )
+    ) +
+  geom_tile() + 
+  geom_text(
+    aes(Var2, Var1, label = value),
+    color = "black",
+    size  = 4
+    ) +
+  scale_fill_gradient2(low="darkred", high="darkgreen", guide="colorbar") +
+  # viridis::scale_fill_viridis(direction = -1, option = "D") +
+  labs(
+    title = "Correlation matrix for NFL Defenses",
+    x = "",
+    y = "", 
+    fill = "Coefficient"
+  ) +
+  apatheme
+def_cor_plot
+
+ggsave(
+  here::here("img", "correlation_defense.png"),
+  def_cor_plot,
+  width = 12,
+  height = 8
+)
+# viridis::scale_fill_viridis(direction = -1, option = "H")
 # ***************************
 # ---- Season win totals ----
 # ***************************

@@ -62,17 +62,18 @@ pbp_stats <- lapply(seasons_lst, FUN = function(x) {
 # ---- Team offensive stats ----
 # ******************************
 
-
 # load QB stats and calculate game EPA, cumalitve EPA, EPA per play
 off_stats <- lapply(pbp_stats, FUN = function(x) {
   
   offense <- get_offense(x)
-
-}
+  }
 ) 
-off_df <- dplyr::bind_rows(off_stats)
 
-saveRDS(off_df, here::here("data", "offensive.rds"))
+# rm(season_df, season_pbp, first_qtr, off_df2, off_qtr_score_diff, off_drive_stats, off_game, off_qtr_scores, off_time_of_poss, off_stats, qtr_scores)
+off_df <- dplyr::bind_rows(off_stats)
+# off_df2 <- readRDS(here::here("data", "offensive.rds"))
+
+# saveRDS(off_df, here::here("data", "offensive2.rds"))
 
 tmp <- 
   off_df %>% 
@@ -96,7 +97,7 @@ tmp
 # ******************************
 # ---- Team defensive stats ----
 # ******************************
-
+# season_pbp <- pbp_stats[[14]]
 # load QB stats and calculate game EPA, cumalitve EPA, EPA per play
 def_stats <- lapply(pbp_stats, FUN = function(x) {
   
@@ -104,15 +105,13 @@ def_stats <- lapply(pbp_stats, FUN = function(x) {
   
 }
 ) 
-def_df <- dplyr::bind_rows(def_stats) %>% 
-  dplyr::select(-contains("def_qtr_pts_6"))
+def_df <- dplyr::bind_rows(def_stats) 
 
 saveRDS(def_df, here::here("data", "defensive.rds"))
 
 # **********************
 # ---- Team records ----
 # **********************
-rm(pbp)
 
 # pull rosters for every year
 team_records <- lapply(seasons_lst, FUN = function(x) {
@@ -132,7 +131,7 @@ saveRDS(team_records, here::here("data", "wins.rds"))
 # *********************************
  
 # Offense
-off_df       <- readRDS(here::here("data", "offensive.rds"))
+off_df       <- readRDS(here::here("data", "offensive2.rds"))
 
 # Defense
 def_df       <- readRDS(here::here("data", "defensive.rds"))
@@ -153,7 +152,7 @@ off_def_data <-
     by = c("season", "week", "game_id", "team" = "defteam")
   )
 
-saveRDS(off_def_data, here::here("data", "football_wins.rds"))
+saveRDS(off_def_data, here::here("data", "football_wins2.rds"))
 
 # cumalative offense
 lag_off      <- rolling_offense(off_df)
@@ -188,7 +187,7 @@ opp_lag_data <-
     lag_def,
     by = c("season", "week", "game_id", "team" = "defteam")
   ) %>%
-  setNames(c("season", "week", "game_id", "team", "opponent", paste0("opp_", names(.)[6:36]))) %>% 
+  setNames(c("season", "week", "game_id", "team", "opponent", paste0("opp_", names(.)[6:39]))) %>% 
   dplyr::select(-team)
 
 final_lag_data <- 
@@ -201,7 +200,7 @@ final_lag_data <-
   dplyr::select(-opp_win, -opp_home, -opp_div_game) %>% 
   dplyr::relocate(season, week, game_id, team, opponent, win, win_pct, home_win_pct, away_win_pct, home, div_game)
 
-saveRDS(final_lag_data, here::here("data", "football_wins_lag.rds"))
+saveRDS(final_lag_data, here::here("data", "football_wins_lag2.rds"))
 
 # bits_to_dec <- function(bitty) {
 #   bitty <- 15
