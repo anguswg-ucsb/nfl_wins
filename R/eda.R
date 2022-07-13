@@ -42,6 +42,8 @@ data_path  <-  here::here("data")
 # Read in joined offense defense data
 # football     <- readRDS(here::here("data", "football_wins.rds"))
 football     <- readRDS(here::here("data", "football_wins2.rds"))
+game_spreads <- readRDS(here::here("data", "football_spread.rds"))
+spreads_lag  <- readRDS(here::here("data", "football_spread_lag.rds"))
 offense      <- readRDS(here::here("data", "offensive.rds"))
 defense      <- readRDS(here::here("data", "defensive.rds"))
 
@@ -349,6 +351,108 @@ ggsave(
   height = 8
 )
 # viridis::scale_fill_viridis(direction = -1, option = "H")
+
+# ***************************************
+# ---- Spread Correlation w/ offense ----
+# ***************************************
+
+spread_cor <-
+  game_spreads %>% 
+  # dplyr::filter(home == 1) %>%
+  # dplyr::filter(week >= 5, week <= 17) %>%
+  # na.omit() %>%
+  dplyr::select(spread, div_game, qtr_pts_1:qtr_pts_4, qb_epa, turnovers, top_pct, score_drives_pct) %>%
+  # dplyr::select(spread, home, div_game, qtr_pts_1:qtr_pts_4, qb_epa, turnovers, top_pct, score_drives_pct) %>%
+  # dplyr::select(win, home, div_game, contains("def")) %>% 
+  cor(use =  "pairwise.complete.obs") %>% 
+  round(2) %>% 
+  reshape2::melt()
+
+spread_cor_plot <-
+  ggplot(
+    data = spread_cor, aes(
+      x    = Var1,
+      y    = Var2,
+      fill = value
+    )
+  ) +
+  geom_tile() + 
+  geom_text(
+    aes(Var2, Var1, label = value),
+    color = "black",
+    size  = 4
+  ) +
+  scale_fill_gradient2(low="darkred", high="midnightblue", guide="colorbar") +
+  # viridis::scale_fill_viridis(direction = -1, option = "D") +
+  labs(
+    # title = "Relationship between Spread and Offensive performance",
+    title = "Correlations with End-of-Game score differences",
+    # subtitle = "Spread and Offensive performance",
+    x = "",
+    y = "", 
+    fill = "Coefficient"
+  ) +
+  apatheme +
+  theme(axis.text.x = element_text(angle = -45))
+  
+spread_cor_plot
+
+ggsave(
+  here::here("img", "correlation_offense_spread.png"),
+  spread_cor_plot,
+  width = 12,
+  height = 8
+)
+# *********************************
+# ---- Spread lag Correlations ----
+# *********************************
+
+spread_lag_cor <-
+  spreads_lag %>% 
+  # na.omit() %>%
+  dplyr::select(spread, spread_lag, win_pct, home, qtr_pts_1:qb_epa, turnovers, top_pct, score_drives_pct) %>% 
+  # dplyr::select(win, home, div_game, contains("def")) %>% 
+  cor(use =  "pairwise.complete.obs") %>% 
+  round(2) %>% 
+  reshape2::melt()
+
+# spread_lag_cor_plot <-
+  ggplot(
+    data = spread_lag_cor, aes(
+      x    = Var1,
+      y    = Var2,
+      fill = value
+    )
+  ) +
+  geom_tile() + 
+  geom_text(
+    aes(Var2, Var1, label = value),
+    color = "black",
+    size  = 4
+  ) +
+  scale_fill_gradient2(low="darkred", high="midnightblue", guide="colorbar") +
+  # viridis::scale_fill_viridis(direction = -1, option = "D") +
+  labs(
+    # title = "Relationship between Spread and Offensive performance",
+    title = "Correlations with End-of-Game score differences",
+    # subtitle = "Spread and Offensive performance",
+    x = "",
+    y = "", 
+    fill = "Coefficient"
+  ) +
+  apatheme +
+  theme(axis.text.x = element_text(angle = -45))
+
+# spread_cor_plot
+
+# ggsave(
+#   here::here("img", "correlation_offense_spread.png"),
+#   spread_cor_plot,
+#   width = 12,
+#   height = 8
+# )
+
+
 # ***************************
 # ---- Season win totals ----
 # ***************************

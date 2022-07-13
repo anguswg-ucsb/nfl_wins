@@ -16,6 +16,7 @@ data_path  <-  here::here("data")
 # *******************
 # ---- Load Data ----
 # *******************
+na_df <- nfl_df[rowSums(is.na(nfl_df)) > 0,]
 
 # Load Lag NFL win data
 nfl_df <- readRDS(here::here("data", "football_wins_lag.rds")) %>% 
@@ -27,13 +28,29 @@ nfl_df <- readRDS(here::here("data", "football_wins_lag.rds")) %>%
       rest_days == 7  ~  "normal_rest",
       rest_days > 7   ~  "long_rest"
       ),
+    opp_rest_days = dplyr::case_when(
+      opp_rest_days < 7   ~  "short_rest",
+      opp_rest_days == 7  ~  "normal_rest",
+      opp_rest_days > 7   ~  "long_rest"
+    ),
     win = factor(win, levels = c(1, 0))
     ) %>% 
-  dplyr::select(-game_id, -team, -opponent, -week)
+  dplyr::mutate(
+    across((contains("dscore")), ~replace(., is.na(.), 0))
+  ) %>% 
+  na.omit() %>%
+  dplyr::select(-week, -season, -score_drives, -ndrives,-def_score_drives, -def_ndrives,
+                -opp_score_drives, -opp_ndrives, -opp_def_score_drives, -opp_def_ndrives,
+                -drive_time_of_possession_sec,
+                -opp_drive_time_of_possession_sec)
 
-holdout <-
-  nfl_df %>% 
-  dplyr::filter(season == 2021)
+# %>%   dplyr::select(-contains("def"))
+
+  # dplyr::select(-game_id, -team, -opponent, -week)
+
+# holdout <-
+#   nfl_df %>% 
+#   dplyr::filter(season == 2021)
 
     # home2 = case_when( home == 1 ~ "home", home == 0 ~ "away"),
     # home2 = factor(home2, levels = c("home", "away")) ) 
@@ -42,11 +59,12 @@ holdout <-
 # tibble::glimpse(nfl_df)
 
 # Remove NAs from data
-nfl_df <- 
-  nfl_df %>% 
-  na.omit() %>% 
-  dplyr::filter(season != 2021) %>% 
-  dplyr::select(-season)
+# nfl_df <-
+#   nfl_df %>% 
+#   na.omit() %>% 
+#   # dplyr::filter(season != 2021) %>%
+#   dplyr::select(-season, -score_drives, -ndrives,-def_score_drives, -def_ndrives, 
+#                 -opp_score_drives, -opp_ndrives, -opp_def_score_drives, -opp_def_ndrives)
 # all_na <- nfl_df[rowSums(is.na(nfl_df)) > 0,]
 
 # hist(nfl_df$win)
@@ -69,7 +87,7 @@ nfl_test  <- testing(nfl_split)
 # *****************
 # ---- Recipes ----
 # *****************
-
+usemodels::use_ranger(win~., data = nfl_train)
 usemodels::use_kknn(win~., data = nfl_train)
 usemodels::use_xgboost(win~., data = nfl_train)
 usemodels::use_glmnet(win~., data = nfl_train)
@@ -85,15 +103,18 @@ kknn_recipe <-
     formula = win ~ ., 
     data    = nfl_train
   ) %>% 
-  step_string2factor(one_of("rest_days")) %>% 
+  recipes::update_role(
+    game_id, team, opponent, new_role = "ID"
+  ) %>% 
+  step_string2factor(one_of("rest_days", "opp_rest_days")) %>% 
   step_novel(all_nominal_predictors()) %>% 
   step_dummy(all_nominal_predictors()) %>% 
   # themis::step_smote(nfl_finish) %>%
   step_zv(all_predictors()) %>% 
   step_normalize(all_numeric_predictors())
 
-knn_juice <- juice(prep(kknn_recipe))
-count(knn_juice, win)
+# knn_juice <- juice(prep(kknn_recipe))
+# count(knn_juice, win)
 
 # glmnet linear regression
 glmnet_recipe <- 
@@ -101,7 +122,10 @@ glmnet_recipe <-
     formula = win ~ .,
     data    = nfl_train
     ) %>% 
-  step_string2factor(one_of("rest_days")) %>% 
+  recipes::update_role(
+    game_id, team, opponent, new_role = "ID"
+  ) %>% 
+  step_string2factor(one_of("rest_days", "opp_rest_days")) %>% 
   step_novel(all_nominal_predictors()) %>% 
   step_dummy(all_nominal_predictors()) %>% 
   step_zv(all_predictors()) %>% 
@@ -114,17 +138,35 @@ xgboost_recipe <-
     formula = win ~ ., 
     data    = nfl_train
   ) %>% 
-  step_string2factor(one_of("rest_days")) %>% 
+  recipes::update_role(
+    game_id, team, opponent, new_role = "ID"
+  ) %>% 
+  step_string2factor(one_of("rest_days", "opp_rest_days")) %>% 
   step_novel(all_nominal_predictors()) %>% 
   step_dummy(all_nominal_predictors(), one_hot = TRUE) %>% 
   # themis::step_smote(nfl_finish) %>%
   step_zv(all_predictors()) 
 
+# Random forest model
+ranger_recipe <- 
+  recipes::recipe(
+    formula = win ~ ., 
+    data    = nfl_train
+  ) %>% 
+  recipes::update_role(
+    game_id, team, opponent, new_role = "ID"
+  ) %>% 
+  step_string2factor(one_of("rest_days", "opp_rest_days")) 
+
+# MARS model
 earth_recipe <- 
   recipes::recipe(
     formula = win ~ .,
     data = nfl_train) %>% 
-  step_string2factor(one_of("rest_days")) %>% 
+  recipes::update_role(
+    game_id, team, opponent, new_role = "ID"
+  ) %>% 
+  step_string2factor(one_of("rest_days", "opp_rest_days")) %>% 
   step_novel(all_nominal_predictors()) %>% 
   step_dummy(all_nominal_predictors()) %>% 
   # themis::step_smote(fp_finish) %>%
@@ -149,14 +191,14 @@ glmnet_spec <-
   set_mode("classification") %>% 
   set_engine("glmnet") 
 
-# ranger_spec <- 
-#   rand_forest(
-#     mtry  = tune(),
-#     min_n = tune(), 
-#     trees = 1000
-#   ) %>% 
-#   set_mode("regression") %>% 
-#   set_engine("ranger", importance = "permutation") 
+ranger_spec <-
+  rand_forest(
+    mtry  = tune(),
+    min_n = tune(),
+    trees = tune()
+  ) %>%
+  set_mode("classification") %>%
+  set_engine("ranger", importance = "permutation")
 
 xgboost_spec <- 
   boost_tree(
@@ -182,10 +224,11 @@ earth_spec <-
 # ********************************
 
 # Set seed for resampling 
-set.seed(589)
+set.seed(432)
 
 # CV folds
 nfl_folds <- rsample::vfold_cv(nfl_train, v = 10, strata = win)
+# nfl_folds <- rsample::bootstraps(nfl_train, strata = win)
 
 # ---- Workflow set of models ----
 nfl_wfs <- 
@@ -194,7 +237,7 @@ nfl_wfs <-
       kknn_rec        = kknn_recipe,
       glmnet_rec      = glmnet_recipe,
       # glmnet_ups_rec  = glmnet_ups_recipe,
-      # ranger_rec   = ranger_recipe,
+      ranger_rec      = ranger_recipe,
       xgboost_rec     = xgboost_recipe,
       earth_rec       = earth_recipe
       # smote_norm_rec = smote_norm_recipe,
@@ -206,7 +249,7 @@ nfl_wfs <-
       kknn       = kknn_spec,
       glmnet     = glmnet_spec,
       # glmnet_ups = glmnet_spec,
-      # ranger    = ranger_spec,
+      ranger     = ranger_spec,
       xgboost    = xgboost_spec,
       earth      = earth_spec
     ),
@@ -262,17 +305,20 @@ modeltime::parallel_stop()
 rank_results(nfl_wfs)
 
 # Comparing Accuracy and ROC AUC of 7 models
-reg_mod_comp_plot <-
+class_mod_comp_plot <-
   nfl_wfs %>%
   autoplot() + 
   labs(
     col = "",
-    title    = "Regression Model comparisons",
+    title    = "Classification Model comparisons",
     subtitle = "Predicting wins"
   ) 
 
-reg_mod_comp_plot
+class_mod_comp_plot
 
+save_path <- "D:/nfl/classification/"
+
+saveRDS(nfl_wfs, paste0(save_path, "wfs/win_classification_wfs.rds"))
  # ****************************
 # ---- Select best models ----
 # ****************************
