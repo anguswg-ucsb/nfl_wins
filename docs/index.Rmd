@@ -16,8 +16,10 @@ library(knitr)
 library(ggplot2)
 library(dplyr)
 
-offense <- readRDS(here::here("data", "offensive.rds"))
-defense <- readRDS(here::here("data", "defensive.rds"))
+offense   <- readRDS(here::here("data", "offensive.rds"))
+defense   <- readRDS(here::here("data", "defensive.rds"))
+nfl_train <- readRDS(here::here("data", "class_train_data.rds"))
+nfl_test  <- readRDS(here::here("data", "class_test_data.rds"))
 ```
 
 
@@ -79,6 +81,7 @@ knitr::kable(head(offense))
 off_table <- tibble::tibble(
   Variable    = c("Points Scored in quarter 1, 2, 3, 4", 
                   "Score Differential",
+                  "Average 4th quarter Score Differential",
                   "Time of Possesion", 
                   "Third Down Conversion Rate", 
                   "Turnovers",
@@ -88,6 +91,7 @@ off_table <- tibble::tibble(
   Type        = c("Numeric", "Numeric", "Numeric", "Numeric","Numeric", "Numeric","Numeric"),
   Description = c("Total Points scored at the end of each quarter",
                   "Average Score differential at the end of each quarter of the game",
+                  "Average Score differential throughout the 4th quarter",
                   "Time of possesion as a percent of both teams possesion time",
                   "Percent of 3rd downs converted by offense",
                   "Total Turnovers by the offense (Fumbles lost + Interceptions",
@@ -180,11 +184,48 @@ Now our data is set up so that all the information used to inform our prediction
 
 
 # Modeling
+I decided I wanted to run my data across a suite of 7 different models and see how they all perform against eachother 
+
+  - Logistic Regression
+  - KKN nearest neighbors
+  - XGBoost 
+  - Multiadaptive regression splines (MARS)
+  - MLP Neural Net
+  - SVM Robust
+  - SVM Poly
 
 ## Data Budget/Splits
+The first step was to split up our data into testing and training splits, 75% training 25% testing. I chose to do some stratified resampling using the our binary win value to ensure there was an even distribution of wins and losses in our training and testing splits. 
 
-After 
 ## Data Preprocessing
+Using the recipes package, I made ID variables for information about the game and when it happened. I then applied some recipe steps to my training data.
+
+  - string variables to factors
+  - assigned unseen factor levels to new values 
+  - created dummy variables
+  - removed variables with zero variation
+  - normalized all my numeric predictors
+
+I used this general framework for each of my 7 models with some slight variations depending on the model. One-hot encoding was used for the XGBoost recipe.
+
+```{r}
+ # Logistic Regression data preprocessing recipe steps
+glmnet_recipe <- 
+  recipes::recipe(
+    formula = win ~ .,
+    data    = nfl_train
+    ) %>% 
+  recipes::update_role(
+    game_id, team, opponent, season, week, new_role = "ID"
+  ) %>% 
+  recipes::step_novel(recipes::all_nominal_predictors()) %>% 
+  recipes::step_dummy(recipes::all_nominal_predictors()) %>% 
+  themis::step_smote(win, over_ratio = 0.9) %>%
+  recipes::step_zv(recipes::all_predictors()) %>% 
+  recipes::step_normalize(recipes::all_numeric_predictors()) 
+
+```
+
 
 ## Model Selection
 

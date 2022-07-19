@@ -44,27 +44,48 @@ data_path  <-  here::here("data")
   # dplyr::select(-week, -season, -score_drives, -ndrives, -def_ndrives,
   #               -opp_spread, -opp_score_drives, -opp_ndrives, -opp_def_score_drives, -opp_def_ndrives,
   #               -drive_time_of_possession_sec,  -opp_drive_time_of_possession_sec)
+
+correct_game_ids <- readRDS("correct_game_ids.rds")
+# correct_game_ids <- readRDS("correct_game_ids_glmnet.rds")
+
 nfl_df <- readRDS(here::here("data", "football_closing_spread_lag.rds")) %>% 
-  na.omit() %>% 
-  dplyr::filter(home == 1) %>%
-  dplyr::select(-home, -week, -spread, -score_drives, -ndrives, -def_ndrives,
+  na.omit() %>%
+  dplyr::filter(season != 2021, home == 1) %>%
+  # dplyr::filter(home == 1) %>%
+  dplyr::select(-home, -week, -spread, -score_drives, -ndrives, -def_ndrives, -def_score_drives,
                 -opp_spread, -opp_score_drives, -opp_ndrives, -opp_def_score_drives, -opp_def_ndrives,
-                -drive_time_of_possession_sec,  -opp_drive_time_of_possession_sec, -pts_scored) %>% 
-  dplyr::select(-contains("dscore_diff")) %>%
-  # dplyr::select(-contains("dscore_diff"), -contains("score_diff"), -contains("def")) %>%
-  dplyr::rename(spread = spread_line) 
-  # dplyr::mutate(
-  #   diff_qtr_pts_1 = qtr_pts_1 - def_qtr_pts_1
-  # ) %>% 
-  # dplyr::relocate(qtr_pts_1, def_qtr_pts_1, diff_qtr_pts_1)
+                -drive_time_of_possession_sec,  -opp_drive_time_of_possession_sec, -pts_scored,
+                -score_diff_qtr_1, -score_diff_qtr_2, -score_diff_qtr_3,
+                -opp_score_diff_qtr_1, -opp_score_diff_qtr_2, -opp_score_diff_qtr_3,
+                -def_score_drives_pct, -opp_def_score_drives_pct, -def_third_down_pct,
+                -opp_def_third_down_pct, -def_qb_epa, -opp_def_qb_epa,
+                -qtr_pts_1, -qtr_pts_2, -qtr_pts_3,
+                -opp_qtr_pts_1, -opp_qtr_pts_2, -opp_qtr_pts_3,
+                -def_turnovers, -opp_def_turnovers, -score_diff, -opp_score_diff
+  ) %>%
+  dplyr::select(-contains("dscore_diff"), -contains("def_qtr_pts")) %>%
+  dplyr::rename(spread = spread_line)  %>%
+  dplyr::mutate(across(where(is.numeric), round, 4)) 
+  # dplyr::filter(game_id %in% correct_game_ids$game_id)
+  # na.omit() %>%
+  # dplyr::filter(home == 1) %>%
+  # # dplyr::filter(week >= 3, week <= 17) %>%
+  # dplyr::select(-home, -week, -spread, -score_drives, -ndrives, -def_ndrives, -def_score_drives,
+  #               -opp_spread, -opp_score_drives, -opp_ndrives, -opp_def_score_drives, -opp_def_ndrives,
+  #               -drive_time_of_possession_sec,  -opp_drive_time_of_possession_sec, -pts_scored,
+  #               -score_diff_qtr_1, -score_diff_qtr_2, -score_diff_qtr_3,
+  #               -opp_score_diff_qtr_1, -opp_score_diff_qtr_2, -opp_score_diff_qtr_3
+  #               ) %>%
+  # dplyr::select(-contains("dscore_diff"), -contains("def_qtr_pts")) %>%
+  # dplyr::rename(spread = spread_line)  %>%
+  # dplyr::mutate(across(where(is.numeric), round, 4))
+
+
 spread_cor <-
   nfl_df %>%
-  # dplyr::filter(home == 1) %>%
-  # dplyr::filter(week >= 5, week <= 17) %>%
-  # na.omit() %>%
-  dplyr::select(spread,pts_for, pts_against, point_diff, opp_pts_for,
-                opp_pts_against, opp_point_diff,
-                qb_epa, turnovers, top_pct, score_drives_pct) %>%
+  dplyr::select(where(is.numeric)) %>%
+  # dplyr::select(pts_for, pts_against, point_diff) %>% 
+  dplyr::select(-season, -contains("opp")) %>%
   cor(use =  "pairwise.complete.obs") %>%
   round(2) %>%
   reshape2::melt()
@@ -83,7 +104,10 @@ spread_cor <-
     color = "black",
     size  = 4
   ) +
-  scale_fill_gradient2(low="darkred", high="midnightblue", guide="colorbar")
+  scale_fill_gradient2(low="darkred", high="midnightblue", guide="colorbar") +
+    theme(
+      axis.text.x = element_text(angle = -45)
+    )
 # nfl_long <- 
 #   nfl_df %>% 
 #   dplyr::mutate(
@@ -235,6 +259,26 @@ kernlab_recipe <-
 #   step_zv(all_predictors()) %>% 
 #   step_normalize(all_numeric_predictors()) 
 
+nnet_recipe <- 
+  recipe(
+    formula = spread ~ ., 
+    data    = nfl_train
+  ) %>% 
+  recipes::update_role(
+    game_id, team, opponent, season, new_role = "ID"
+  ) %>% 
+  step_normalize(all_numeric_predictors()) 
+
+bag_recipe <- 
+  recipe(
+    formula = spread ~ ., 
+    data    = nfl_train
+  ) %>% 
+  recipes::update_role(
+    game_id, team, opponent, season, new_role = "ID"
+  ) %>% 
+  step_normalize(all_numeric_predictors()) 
+
 # ********************
 # ---- Model Spec ----
 # ********************
@@ -289,6 +333,23 @@ kernlab_spec <-
     ) %>% 
   set_mode("regression") 
 
+bag_cart_spec <- 
+  bag_tree(
+    cost_complexity = tune(),
+    min_n           = tune(),
+    tree_depth      = tune()
+  ) %>% 
+  set_engine("rpart") %>% 
+  set_mode("regression")
+
+nnet_spec <- 
+  mlp(
+    hidden_units = tune(), 
+    penalty      = tune(), 
+    epochs       = tune()
+    ) %>% 
+  set_engine("nnet") %>% 
+  set_mode("regression")
 # kernlab_poly_spec <- 
 #   svm_poly(
 #     cost         = tune(), 
@@ -316,7 +377,9 @@ nfl_wfs <-
       # ranger_rec      = ranger_recipe,
       xgboost_rec      = xgboost_recipe,
       earth_rec        = earth_recipe,
-      kernlab_rec      = kernlab_recipe
+      kernlab_rec      = kernlab_recipe,
+      nnet_rec         = nnet_recipe,
+      bag_cart_rec     = bag_recipe
       # kernlab_poly_rec = kernlab_poly_recipe
     ),
     models  = list(
@@ -325,7 +388,9 @@ nfl_wfs <-
       # ranger     = ranger_spec,
       xgboost    = xgboost_spec,
       earth      = earth_spec,
-      svm        = kernlab_spec
+      svm        = kernlab_spec,
+      nnet       = nnet_spec,
+      bag_cart   = bag_cart_spec
       # svm_poly   = kernlab_poly_spec
     ),
     cross = F
@@ -377,39 +442,54 @@ nfl_wfs <-
 # Stop parrallelization
 modeltime::parallel_stop()
 
+ save_path <- "D:/nfl/regression/"
+
+# Save workflow set
+# saveRDS(nfl_wfs, paste0(save_path, "wfs/spread_regression_wfs.rds"))
+
 rank_results(nfl_wfs)
- # nfl_wfs[c(1:5),] %>% 
-  # rank_results()
+rank_results(nfl_wfs[c(1:6),])
+# New facet label names for variable
+# metric_labs <- c("MAE", "RMSE", "R2")
+# names(metric_labs) <- c("MAE", "RMSE", "R2")
 
 # Comparing Accuracy and ROC AUC of 7 models
 reg_mod_comp_plot <-
-  nfl_wfs %>%
-  # nfl_wfs[c(1:5),] %>% 
+  # nfl_wfs %>%
+  nfl_wfs[c(1:6),] %>% 
   autoplot() + 
   labs(
+    # col = "Models",
     col = "",
     title    = "Regression Model comparisons",
-    subtitle = "Predicting spread"
-  ) 
+    subtitle = "Predicting Las Vegas Spread"
+  ) +
+  apatheme
 
 reg_mod_comp_plot
 
-save_path <- "D:/nfl/classification/"
-
-saveRDS(nfl_wfs, paste0(save_path, "wfs/win_classification_wfs.rds"))
+# Save plot
+# ggsave(
+#   paste0(save_path, "plots/reg_model_ranks.png"),
+#   reg_mod_comp_plot
+# )
 
 # ****************************
 # ---- Select best models ----
 # ****************************
 
 metrics_lst <- list()
-
+# lm_vi <- 
+#   mod_last_fit %>% 
+#   pluck(".workflow", 1) %>%   
+#   extract_fit_parsnip() %>% 
+#   vip::vi()
 # rm(acc)
-i <- 3
+i <- 6
 # rm(i, model, model_name, mod_workflow, mod_final_fit, mod_last_fit, mod_workflow_fit, resample_roc_plot, vip_plot,
 #    mod_test,mod_train, train_acc, test_acc, overall_aucroc,
 # roc_auc_curve_plot, mod_results)
-
+library(NeuralNetTools)
 # Extract wf set results
 for (i in 1:length(nfl_wfs$wflow_id)) {
   
@@ -489,8 +569,10 @@ for (i in 1:length(nfl_wfs$wflow_id)) {
       mod_last_fit %>% 
         pluck(".workflow", 1) %>%   
         extract_fit_parsnip() %>% 
+        # vip::vi()
         # vip::vip() + 
-        vip::vip(num_features = 65) +
+        vip::vip(num_features = 70) +
+        # vip::vip(num_features = 30) +
         labs(
           title    = paste0("Variable Importance Scores - ", model_name),
           subtitle = "Regression",
@@ -646,8 +728,10 @@ game_outcomes <- readRDS(here::here("data", "football_closing_spread_lag.rds")) 
 
 pred_outcomes <- 
   mod_final_fit %>% 
-  predict(nfl_test) %>% 
-  bind_cols(dplyr::select(nfl_test, game_id, team, spread)) %>% 
+  predict(nfl_test) %>%
+  bind_cols(dplyr::select(nfl_test, game_id, team, spread)) %>%
+  # predict(nfl_df) %>%
+  # bind_cols(dplyr::select(nfl_df, game_id, team, spread)) %>%
   dplyr::left_join(
     game_outcomes,
     by = c("game_id", "team")
@@ -659,11 +743,6 @@ pred_outcomes <-
     n = 1:n()
   ) 
 
-pred_eval %>% 
-  dplyr::group_by(season, week, name) %>% 
-  dplyr::summarise(
-    spread_diff = mean(spread_diff, na.rm = T)
-  )
 
 pred_eval <- 
   pred_outcomes %>% 
@@ -702,12 +781,98 @@ abs_pred_diff <-
 # dplyr::mutate(
 #   n = 1:n()
 # )
+strong_pred <- 
+  abs_pred_diff %>% 
+  tidyr::pivot_wider(names_from = name, values_from = c(spread_diff)) %>% 
+  dplyr::mutate(
+    mod_win = dplyr::case_when(
+      .pred <= spread ~ 1,
+      TRUE            ~ 0
+    )
+  )
+
+mod_correct <-
+  pred_outcomes %>% 
+    dplyr::group_by(game_id) %>% 
+    tidyr::pivot_longer(cols = c(spread, .pred)) %>% 
+    dplyr::mutate(
+      spread_diff = abs(actual_spread - value),
+      min_diff    = min(spread_diff, na.rm = T)
+      ) %>% 
+    dplyr::mutate(
+      mod_win     =  dplyr::case_when(
+       name == ".pred" & spread_diff == min_diff ~ 1,
+        TRUE            ~ 0
+      )
+    ) %>% 
+    dplyr::ungroup() %>% 
+    dplyr::filter(mod_win  == 1)
+
+# correct_game_ids <- mod_correct[, 3]
+# saveRDS(correct_game_ids, "correct_game_ids_glmnet.rds")
+
+# % of games by week that model predicted better than vegas
+mod_correct %>% 
+  dplyr::group_by(week) %>% 
+  dplyr::summarise(
+    n = n(),
+    mod_win = sum(mod_win, na.rm = T)
+    ) %>% 
+  dplyr::mutate(
+    mod_win_pct = round(mod_win/n, 2)
+    ) %>% 
+  ggplot() +
+  geom_col(aes(x = week , y = mod_win_pct)) +
+  scale_y_continuous(limits = c(0, 1)) 
+
+# % of games by season that model predicted better than vegas
+mod_correct %>% 
+  dplyr::group_by(season) %>% 
+  dplyr::summarise(
+    n = n(),
+    mod_win = sum(mod_win, na.rm = T)
+  ) %>% 
+  dplyr::mutate(
+    mod_win_pct = round(mod_win/n, 2)
+  ) %>% 
+  ggplot() +
+  geom_col(aes(x = season , y = mod_win_pct)) +
+  scale_y_continuous(limits = c(0, 1)) 
+# strong_pred %>% 
+#   dplyr::filter(mod_win  == 1)
+  # tidyr::pivot_longer(cols = c(spread, .pred, mod_win))
+strong_pred 
+count_mod_win <- 
+  strong_pred %>% 
+  dplyr::group_by(week) %>% 
+  dplyr::summarise(
+    n = n(),
+    mod_win = sum(mod_win, na.rm = T)
+    ) %>% 
+  dplyr::ungroup() %>% 
+  dplyr::mutate(
+    mod_win_pct = round(mod_win/n, 2)
+  )
+
+count_mod_win %>% 
+  ggplot() +
+  geom_col(aes(x = week, y = mod_win_pct)) +
+  scale_y_continuous(limits = c(0, 1))
+
+# strong_pred %>% 
+#   ggplot() +
+#   geom_point(aes(x = week, y = mod_win)) +
+#   facet_wrap(~season)
+# 
+# strong_pred %>%
+#   tidyr::pivot_longer(cols = c(mod_win))
 
 abs_pred_diff %>% 
   ggplot() +
   geom_hline(yintercept = 0, size = 2, alpha = 0.7, col = "black") +
   geom_boxplot(aes(x = sort(week), y = spread_diff, fill = name)) +
-  scale_y_continuous(limits = c(0, 30))
+  scale_y_continuous(limits = c(0, 30)) 
+  # coord_flip()
 # geom_line(aes(x = n, y = .pred))
 # geom_line(aes(x = reorder(season, week), y = .pred))
 pred_outcomes %>% 
@@ -741,8 +906,26 @@ pred_outcomes %>%
 
 pred_eval %>% 
   ggplot() +
-  geom_line(aes(x = n , y = spread_diff, color = name)) +
-facet_wrap(~season)
+  geom_col(aes(x = n , y = value, fill = name)) +
+  facet_grid(season~name)
+
+pred_outcomes %>% 
+  dplyr::group_by(game_id) %>% 
+  tidyr::pivot_longer(cols = c(spread, .pred)) %>% 
+  dplyr::mutate(
+    spread_diff = abs(actual_spread - value)
+    # spread_diff = actual_spread - value
+  ) %>% 
+  dplyr::ungroup() %>% 
+  dplyr::group_by(season) %>%
+  # dplyr::mutate(n = cur_group_id()) %>% 
+  dplyr::mutate(
+    n = 1:n()
+  ) %>%
+  dplyr::ungroup() %>% 
+  ggplot() +
+  geom_col(aes(x = n , y = value, fill = name)) +
+  facet_grid(~name)
 
 pred_correct <- 
   pred_eval %>% 
@@ -769,7 +952,7 @@ pred_correct <-
   dplyr::arrange(season, week) %>% 
   dplyr::mutate(
     season = factor(season),
-    week = factor(week)
+    week   = factor(week)
   )
 
 pred_correct %>% 

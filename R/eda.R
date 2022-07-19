@@ -42,6 +42,7 @@ data_path  <-  here::here("data")
 # Read in joined offense defense data
 # football     <- readRDS(here::here("data", "football_wins.rds"))
 football     <- readRDS(here::here("data", "football_wins2.rds"))
+win_lag  <- readRDS(here::here("data", "football_wins_lag.rds"))
 game_spreads <- readRDS(here::here("data", "football_spread.rds"))
 spreads_lag  <- readRDS(here::here("data", "football_spread_lag.rds"))
 offense      <- readRDS(here::here("data", "offensive.rds"))
@@ -275,10 +276,17 @@ ggsave(
 #   rearrange() %>%  # rearrange by correlations
 #   shave() 
 # rplot(x)
+names(win_lag)[c(15:18, 20:34)]
 off_cor <-
-  football %>% 
+  # football %>%
+  win_lag %>%
+  dplyr::mutate(win = as.numeric(win)) %>%
+  # dplyr::select(win, names(win_lag)[c(15:18, 20:34)]) %>% 
+  dplyr::select(where(is.numeric)) %>%
+  # dplyr::select(pts_for, pts_against, point_diff) %>% 
+  dplyr::select( -season, -contains("opp")) %>%
   # na.omit() %>%
-  dplyr::select(win, home, div_game,qtr_pts_1:turnovers,top_pct, score_drives_pct) %>% 
+  # dplyr::select(win, home, div_game,qtr_pts_1:turnovers,top_pct, score_drives, score_drives_pct) %>% 
   cor(use =  "pairwise.complete.obs") %>% 
   round(2) %>% 
   reshape2::melt()
@@ -297,7 +305,8 @@ off_cor_plot <-
     y = "", 
     fill = "Coefficient"
   ) +
-  apatheme
+  apatheme + 
+  theme(axis.text.x = element_text(angle = -45))
 off_cor_plot
 ggsave(
   here::here("img", "correlation_offense.png"),

@@ -76,12 +76,13 @@ apatheme <-
     axis.line        = element_line(),
     text             = element_text(family='Helvetica'),
     legend.title     = element_blank(),
-    plot.title       = element_text(color = "black", face = "bold", size = 16),
-    axis.title       = element_text(color = "black", face = "bold", size = 12),
-    axis.text.y      = element_text(color = "black"),
-    axis.text.x      = element_text(color = "black"),
-    strip.text.x     = element_text(color = "black",face = "bold"),
-    strip.text.y     = element_text(color = "black",face = "bold")
+    plot.title       = element_text(color = "black", face = "bold"),
+    axis.title       = element_text(color = "black", 
+                                    face = "bold", size = 10),
+    axis.text.y      = element_text(color = "black", size = 10),
+    axis.text.x      = element_text(color = "black", size = 10),
+    strip.text.x     = element_text(color = "black", face = "bold"),
+    strip.text.y     = element_text(color = "black", face = "bold")
   )
 # Making a theme
 simple_theme <-
@@ -1241,6 +1242,97 @@ get_closing_line <- function(season_pbp) {
     dplyr::relocate(game_id, season, week, home_away, spread_line)
  return(season_spread_lines)
     
+}
+
+get_nfl_elo <- function(nfl_season) {
+  # nfl_season <- nfl_split[[23]]
+  # rm(nfl_season, df, nfl_er, nfl_elo, home_elo, away_elo)
+  df <- 
+    nfl_season %>% 
+    dplyr::mutate(
+      wins_home = home_score > away_score
+    )
+  
+  nfl_er <- elo.run(wins_home ~ team + opponent, data = df, k = 20) %>% 
+    as.data.frame() %>% 
+    dplyr::group_by(team.A) %>%
+    dplyr::mutate(
+      r_id = 1:n()
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(
+      team_join = paste0(team.A, "_", team.B, "_", r_id)
+    )
+
+  nfl_elo <- 
+    df %>%   
+    dplyr::group_by(team) %>% 
+    dplyr::mutate(
+      r_id = 1:n()
+    ) %>% 
+    dplyr::ungroup() %>%
+    dplyr::mutate(
+      team_join = paste0(team, "_", opponent, "_", r_id)
+    ) %>% 
+    dplyr::left_join(
+      dplyr::select(nfl_er, team_join, elo_team = elo.A, elo_opponent = elo.B),
+      by = "team_join"
+    ) %>% 
+    dplyr::select(-team_join, -home_score, -away_score, -wins_home, -r_id)
+  
+  home_rating <- 
+    nfl_elo %>% 
+    dplyr::group_by(team) %>% 
+    group_split()
+  
+  home_elo <- lapply(home_rating, FUN = function(x) {
+    rate <- 
+      x %>%
+      dplyr::select(season, week, game_id, win, team, elo = elo_team)
+    }) %>% 
+    dplyr::bind_rows()
+  
+  away_rating <- 
+    nfl_elo %>% 
+    dplyr::group_by(opponent) %>% 
+    group_split()
+  
+  away_elo <- lapply(away_rating, FUN = function(x) {
+    rate <- 
+      x %>%
+      dplyr::select(season, week, game_id, win, team = opponent, elo = elo_opponent)
+  }) %>% 
+    dplyr::bind_rows()
+
+  final_elo <- dplyr::bind_rows(home_elo, away_elo)
+  
+  return(final_elo)
+  
+}
+
+rolling_elo <- function(df) {
+  
+  logger::log_info("\n\nCalculating elo lag...\nSeasons: {min(df$season)} - {max(df$season)}")
+  # df <- nfl_elo
+  # rm(lag_elo, df)
+  lag_elo <- 
+    df %>%
+    # team_records %>%
+    # dplyr::filter(season %in% c(2019, 2020)) %>%
+    # dplyr::select(season, week, game_id, posteam, home,  third_down_pct,     turnovers) %>%
+    dplyr::group_by(season, team) %>%
+    # dplyr::group_by(season) %>% 
+    dplyr::arrange(season, week, .by_group = T) %>% 
+    dplyr::mutate(
+      # across(c(win_pct:away_win_pct), ~dplyr::lag(dplyr::cummean(.x)),
+      across(c(elo), ~dplyr::lag(.x))
+      # .names = "mean_{.col}")
+      # across(c(qtr_pts_1:qtr_pts_4), ~dplyr::lag( cumsum(.x)),  .names = "sum_{.col}"),
+    ) %>% 
+    dplyr::mutate(across(c(elo), round, 4)) %>% 
+    dplyr::ungroup()
+  
+  return(lag_elo)
 }
 rolling_spread <- function(df) {
   

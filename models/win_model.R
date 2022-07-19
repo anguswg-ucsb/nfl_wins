@@ -12,51 +12,102 @@ library(themis)
 source("utils/utils.R")
 
 data_path  <-  here::here("data")
+save_path <- "D:/nfl/classification/"
 
 # *******************
 # ---- Load Data ----
 # *******************
-na_df <- nfl_df[rowSums(is.na(nfl_df)) > 0,]
+na_df <- nfl_df[rowSums(is.na(nfl_df)) > 0, ]
 
-# Load Lag NFL win data
-nfl_df <- readRDS(here::here("data", "football_wins_lag.rds")) %>% 
-  dplyr::select(-contains("qtr_pts_6")) %>% 
-  dplyr::mutate(
-    div_game  = factor(div_game, levels = c(1, 0)),
-    rest_days = dplyr::case_when(
-      rest_days < 7   ~  "short_rest",
-      rest_days == 7  ~  "normal_rest",
-      rest_days > 7   ~  "long_rest"
-      ),
-    opp_rest_days = dplyr::case_when(
-      opp_rest_days < 7   ~  "short_rest",
-      opp_rest_days == 7  ~  "normal_rest",
-      opp_rest_days > 7   ~  "long_rest"
-    ),
-    win = factor(win, levels = c(1, 0))
-    ) %>% 
-  dplyr::mutate(
-    across((contains("dscore")), ~replace(., is.na(.), 0))
-  ) %>% 
-  na.omit() %>%
-  dplyr::select(-week, -season, -score_drives, -ndrives,-def_score_drives, -def_ndrives,
-                -opp_score_drives, -opp_ndrives, -opp_def_score_drives, -opp_def_ndrives,
-                -drive_time_of_possession_sec,
-                -opp_drive_time_of_possession_sec)
+# # Load Lag NFL win data
+# nfl_df <- readRDS(here::here("data", "football_wins_lag.rds")) %>% 
+#   dplyr::select(-contains("qtr_pts_6")) %>% 
+#   dplyr::mutate(
+#     div_game  = factor(div_game, levels = c(1, 0)),
+#     rest_days = dplyr::case_when(
+#       rest_days < 7   ~  "short_rest",
+#       rest_days == 7  ~  "normal_rest",
+#       rest_days > 7   ~  "long_rest"
+#       ),
+#     opp_rest_days = dplyr::case_when(
+#       opp_rest_days < 7   ~  "short_rest",
+#       opp_rest_days == 7  ~  "normal_rest",
+#       opp_rest_days > 7   ~  "long_rest"
+#     ),
+#     win = factor(win, levels = c(1, 0))
+#     ) %>% 
+#   dplyr::mutate(
+#     across((contains("dscore")), ~replace(., is.na(.), 0))
+#   ) %>% 
+#   na.omit() %>%
+#   dplyr::select(-week, -season, -score_drives, -ndrives,-def_score_drives, -def_ndrives,
+#                 -opp_score_drives, -opp_ndrives, -opp_def_score_drives, -opp_def_ndrives,
+#                 -drive_time_of_possession_sec,
+#                 -opp_drive_time_of_possession_sec)
+# game_spreads <- readRDS(here::here("data", "football_closing_spread_lag.rds")) %>% 
+#   dplyr::select(game_id, team, opponent, spread_line)
 
-# %>%   dplyr::select(-contains("def"))
+# Load entire dataset
+model_dat <- readRDS(here::here("data", "football_wins_lag_elo.rds")) 
+   # dplyr::select(-spread_line)
+# win_cor <-
+#   model_dat %>%
+#   dplyr::filter(home == 1) %>%
+#   dplyr::mutate(win = as.numeric(win)) %>%
+#   # dplyr::select(win, names(win_lag)[c(15:18, 20:34)]) %>%
+#   dplyr::select(where(is.numeric)) %>%
+#   dplyr::select(-contains("opp")) %>% 
+#   cor(use =  "pairwise.complete.obs") %>%
+#   round(1) %>%
+#   reshape2::melt()
+# win_cor %>%
+#   ggplot(aes(x=Var1, y=Var2,
+#                            fill=value)) +
+#   geom_tile() +
+#   geom_text(aes(Var2, Var1, label = value),
+#             color = "black", size = 4) +
+#   scale_fill_gradient2(low="darkred", high="darkgreen", guide="colorbar") +
+#   theme(axis.text.x = element_text(angle = -45))
+# win_vars <- 
+#   win_cor %>% 
+#   dplyr::filter(Var1 == "win") %>% 
+#   dplyr::mutate(abs_val = abs(value)) %>% 
+#   arrange(-abs_val) %>% 
+#   dplyr::filter(abs_val != 0) %>% 
+#   tibble() %>% 
+#   dplyr::mutate(Var2 = as.character(Var2)) %>% 
+#   .$Var2
+names(nfl_df)
 
-  # dplyr::select(-game_id, -team, -opponent, -week)
+# Modeling subset
+nfl_df <-
+  model_dat  %>% 
+  # dplyr::filter(season != 2019) %>% 
+  dplyr::filter(season != 2021, home == 1) %>% 
+  dplyr::select(-abs_spread_line, -home, -home_fav, -fav, -spread_line) %>% 
+  dplyr::select(season, week, game_id, team, opponent, win, div_game, rest_days, 
+                opp_rest_days, elo, opp_elo, score_diff, 
+                opp_score_diff, turnovers, opp_turnovers,
+                # score_diff_qtr_1, opp_score_diff_qtr_1,
+                win_pct, away_win_pct, home_win_pct, 
+                opp_win_pct, opp_away_win_pct, opp_home_win_pct, qb_epa, opp_qb_epa, 
+                third_down_pct, opp_third_down_pct)
+  # dplyr::select(-abs_spread_line, -home, -home_fav)
+  # dplyr::select(-spread_line, -home)
+  
+prep(juice(xgboost_recipe))
 
-# holdout <-
-#   nfl_df %>% 
-#   dplyr::filter(season == 2021)
-
-    # home2 = case_when( home == 1 ~ "home", home == 0 ~ "away"),
-    # home2 = factor(home2, levels = c("home", "away")) ) 
-
-# count(nfl_df, rest_days)
-# tibble::glimpse(nfl_df)
+  # dplyr::select(-home, -week, -score_drives, -ndrives, -def_ndrives, -def_score_drives,
+  #            -opp_score_drives, -opp_ndrives, -opp_def_score_drives, -opp_def_ndrives,
+  #               -drive_time_of_possession_sec,  -opp_drive_time_of_possession_sec, 
+  #            # -pts_scored,
+  #               -score_diff_qtr_1, -score_diff_qtr_2, -score_diff_qtr_3,
+  #               -opp_score_diff_qtr_1, -opp_score_diff_qtr_2, -opp_score_diff_qtr_3,
+  #               -def_score_drives_pct, -opp_def_score_drives_pct, -def_third_down_pct,
+  #               -opp_def_third_down_pct, -def_qb_epa, -opp_def_qb_epa,
+  #               -qtr_pts_1, -qtr_pts_2, -qtr_pts_3,
+  #               -opp_qtr_pts_1, -opp_qtr_pts_2, -opp_qtr_pts_3,
+  #               -def_turnovers, -opp_def_turnovers, -score_diff, -opp_score_diff
 
 # Remove NAs from data
 # nfl_df <-
@@ -67,9 +118,6 @@ nfl_df <- readRDS(here::here("data", "football_wins_lag.rds")) %>%
 #                 -opp_score_drives, -opp_ndrives, -opp_def_score_drives, -opp_def_ndrives)
 # all_na <- nfl_df[rowSums(is.na(nfl_df)) > 0,]
 
-# hist(nfl_df$win)
-# count(nfl_df, win)
-# count(nfl_df, div_game)
 
 # Set random seed
 set.seed(234)
@@ -78,16 +126,62 @@ set.seed(234)
 # nfl_split <- initial_split(nfl_df, strata = season)
 nfl_split <- initial_split(nfl_df, strata = win)
 
+# nfl_split <- initial_split(nfl_df)
 # training data split
 nfl_train <- training(nfl_split)
 
 # testinng data split
 nfl_test  <- testing(nfl_split)
 
+win_count_train <- 
+  nfl_train %>% 
+  count(win) %>% 
+  dplyr::mutate(
+    total_games = sum(n, na.rm = T),
+    pct_total   = 100*(n/total_games),
+    split = "Train"
+  ) 
+
+win_count_test <- 
+  nfl_test %>% 
+  count(win) %>% 
+  dplyr::mutate(
+    total_games = sum(n, na.rm = T),
+    pct_total   = 100*(n/total_games),
+    split = "Test"
+  ) 
+win_count <- dplyr::bind_rows(win_count_train, win_count_test) %>% 
+  dplyr::mutate(across(where(is.numeric), round, 1)) %>% 
+  dplyr::mutate(
+    pct_lab = paste0(pct_total, "%"), 
+    split = factor(split, levels = c("Train", "Test"))
+    )
+
+win_count_plot <- 
+  win_count %>% 
+  ggplot() +
+  geom_col(aes(x = win, y = pct_total, fill = split)) +
+  geom_text(aes(x = win, y = pct_total, label = pct_lab), nudge_y = -5) +
+  facet_wrap(~split) +
+  scale_y_continuous(limits = c(0, 100)) +
+  labs(
+    title = "Mild Class Imbalance",
+    x = "Win (1) / Loss (0)",
+    y = "Percentage of dataset"
+  ) +
+  apatheme
+win_count_plot
+
+# Save plot
+ggsave(
+  "D:/nfl/eda/win_class_split.png",
+  win_count_plot
+)
+
 # *****************
 # ---- Recipes ----
 # *****************
-usemodels::use_ranger(win~., data = nfl_train)
+usemodels::use_kernlab_svm_rbf(win~., data = nfl_train)
 usemodels::use_kknn(win~., data = nfl_train)
 usemodels::use_xgboost(win~., data = nfl_train)
 usemodels::use_glmnet(win~., data = nfl_train)
@@ -104,33 +198,63 @@ kknn_recipe <-
     data    = nfl_train
   ) %>% 
   recipes::update_role(
-    game_id, team, opponent, new_role = "ID"
+    game_id, team, opponent, season, week, new_role = "ID"
+    # game_id, team, opponent, season, new_role = "ID"
   ) %>% 
-  step_string2factor(one_of("rest_days", "opp_rest_days")) %>% 
+  # step_string2factor(one_of("rest_days", "opp_rest_days")) %>% 
   step_novel(all_nominal_predictors()) %>% 
   step_dummy(all_nominal_predictors()) %>% 
-  # themis::step_smote(nfl_finish) %>%
+  themis::step_upsample(win, over_ratio = 0.8,  skip = T) %>%      
   step_zv(all_predictors()) %>% 
   step_normalize(all_numeric_predictors())
 
+kknn_recipe %>% 
+  prep() %>% 
+  juice() %>% 
+  count(win)
+
 # knn_juice <- juice(prep(kknn_recipe))
 # count(knn_juice, win)
+
+# glmnet linear regression
+# glmnet_recipe <- 
+#   recipe(
+#     formula = win ~ .,
+#     data    = nfl_train
+#     ) %>% 
+#   recipes::update_role(
+#     game_id, team, opponent, season, week, new_role = "ID"
+#     # game_id, team, opponent, season, new_role = "ID"
+#   ) %>% 
+#   step_novel(all_nominal_predictors()) %>% 
+#   step_dummy(all_nominal_predictors()) %>% 
+#   # themis::step_smote(win, over_ratio = 0.8, skip = T) %>%
+#   # themis::step_smote(win, over_ratio = 0.9) %>%
+#   step_zv(all_predictors()) %>% 
+#   step_normalize(all_numeric_predictors()) 
 
 # glmnet linear regression
 glmnet_recipe <- 
   recipe(
     formula = win ~ .,
     data    = nfl_train
-    ) %>% 
-  recipes::update_role(
-    game_id, team, opponent, new_role = "ID"
   ) %>% 
-  step_string2factor(one_of("rest_days", "opp_rest_days")) %>% 
+  recipes::update_role(
+    game_id, team, opponent, season, week, new_role = "ID"
+    # game_id, team, opponent, season, new_role = "ID"
+  ) %>% 
+  # step_string2factor(one_of("rest_days", "opp_rest_days")) %>% 
   step_novel(all_nominal_predictors()) %>% 
   step_dummy(all_nominal_predictors()) %>% 
+  themis::step_upsample(win, over_ratio = 0.8,  skip = T) %>%
+  # themis::step_smote(win,  over_ratio = 0.8, skip       = T ) %>%
   step_zv(all_predictors()) %>% 
   step_normalize(all_numeric_predictors()) 
 
+glmnet_recipe %>% 
+  prep() %>% 
+  juice() %>% 
+  count(win)
 
 # XGBoost trees
 xgboost_recipe <- 
@@ -139,13 +263,18 @@ xgboost_recipe <-
     data    = nfl_train
   ) %>% 
   recipes::update_role(
-    game_id, team, opponent, new_role = "ID"
+    game_id, team, opponent, season, week, new_role = "ID"
+    # game_id, team, opponent, season, new_role = "ID"
   ) %>% 
-  step_string2factor(one_of("rest_days", "opp_rest_days")) %>% 
   step_novel(all_nominal_predictors()) %>% 
   step_dummy(all_nominal_predictors(), one_hot = TRUE) %>% 
-  # themis::step_smote(nfl_finish) %>%
+  themis::step_upsample(win, over_ratio = 0.8,  skip = T) %>%
   step_zv(all_predictors()) 
+
+xgboost_recipe %>% 
+  prep() %>% 
+  juice() %>% 
+  count(win)
 
 # Random forest model
 ranger_recipe <- 
@@ -154,23 +283,66 @@ ranger_recipe <-
     data    = nfl_train
   ) %>% 
   recipes::update_role(
-    game_id, team, opponent, new_role = "ID"
+    game_id, team, opponent, season, week, new_role = "ID"
+    # game_id, team, opponent, season, new_role = "ID"
   ) %>% 
-  step_string2factor(one_of("rest_days", "opp_rest_days")) 
+  themis::step_upsample(win, over_ratio = 0.8,  skip = T) 
 
 # MARS model
 earth_recipe <- 
   recipes::recipe(
     formula = win ~ .,
-    data = nfl_train) %>% 
+    data = nfl_train
+    ) %>% 
   recipes::update_role(
-    game_id, team, opponent, new_role = "ID"
+    game_id, team, opponent, season, week, new_role = "ID"
+    # game_id, team, opponent, season, new_role = "ID"
   ) %>% 
-  step_string2factor(one_of("rest_days", "opp_rest_days")) %>% 
+  # step_string2factor(one_of("rest_days", "opp_rest_days")) %>% 
   step_novel(all_nominal_predictors()) %>% 
   step_dummy(all_nominal_predictors()) %>% 
-  # themis::step_smote(fp_finish) %>%
+  themis::step_upsample(win, over_ratio = 0.8,  skip = T) %>% 
   step_zv(all_predictors()) 
+
+earth_recipe %>% 
+  prep() %>% 
+  juice() %>% 
+  count(win)
+
+nnet_recipe <- 
+  recipe(
+    formula = win ~ ., 
+    data    = nfl_train
+  ) %>% 
+  recipes::update_role(
+    game_id, team, opponent, season, week, new_role = "ID"
+    # game_id, team, opponent, season, new_role = "ID"
+  ) %>% 
+  themis::step_upsample(win, over_ratio = 0.8,  skip = T) %>% 
+  step_normalize(all_numeric_predictors()) 
+
+nnet_recipe %>% 
+  prep() %>% 
+  juice() %>% 
+  count(win)
+
+kernlab_recipe <- 
+  recipe(
+    formula = win ~ ., 
+    data    = nfl_train
+  ) %>% 
+  recipes::update_role(
+    game_id, team, opponent, season, week, new_role = "ID"
+  ) %>% 
+  themis::step_upsample(win, over_ratio = 0.8,  skip = T) %>% 
+  step_zv(all_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) 
+
+kernlab_recipe %>% 
+  prep() %>% 
+  juice() %>% 
+  count(win)
+
 
 # ********************
 # ---- Model Spec ----
@@ -219,6 +391,30 @@ earth_spec <-
   set_mode("classification") %>%
   set_engine("earth")
 
+nnet_spec <- 
+  mlp(
+    hidden_units = tune(), 
+    penalty      = tune(), 
+    epochs       = tune()
+  ) %>% 
+  set_engine("nnet") %>% 
+  set_mode("classification")
+
+kernlab_spec <- 
+  svm_rbf(
+    cost      = tune(), 
+    rbf_sigma = tune()
+  ) %>% 
+  set_mode("classification") 
+
+kernlab_poly_spec <- 
+  svm_poly(
+    cost         = tune(),
+    degree       = tune(), 
+    scale_factor = tune()
+    ) %>% 
+  set_mode("classification") 
+
 # ********************************
 # ---- Cross Validation folds ----
 # ********************************
@@ -234,24 +430,23 @@ nfl_folds <- rsample::vfold_cv(nfl_train, v = 10, strata = win)
 nfl_wfs <- 
   workflow_set(
     preproc = list(
-      kknn_rec        = kknn_recipe,
-      glmnet_rec      = glmnet_recipe,
-      # glmnet_ups_rec  = glmnet_ups_recipe,
-      ranger_rec      = ranger_recipe,
-      xgboost_rec     = xgboost_recipe,
-      earth_rec       = earth_recipe
-      # smote_norm_rec = smote_norm_recipe,
-      # smote_oh_rec   = smote_oh_recipe,
-      # upsample_norm_rec = upsample_norm_recipe, 
-      # upsample_oh_rec = upsample_oh_recipe
+      kknn_rec         = kknn_recipe,
+      glmnet_rec       = glmnet_recipe,
+      # ranger_rec      = ranger_recipe,
+      xgboost_rec      = xgboost_recipe,
+      earth_rec        = earth_recipe,
+      nnet_rec         = nnet_recipe,
+      kernlab_poly_rec = kernlab_recipe,
+      kernlab_rec      = kernlab_recipe
     ),
     models  = list(
       kknn       = kknn_spec,
       glmnet     = glmnet_spec,
-      # glmnet_ups = glmnet_spec,
-      ranger     = ranger_spec,
       xgboost    = xgboost_spec,
-      earth      = earth_spec
+      earth      = earth_spec,
+      nnet       = nnet_spec,
+      svm_poly   = kernlab_poly_spec,
+      svm        = kernlab_spec
     ),
     cross = F
   )
@@ -281,7 +476,7 @@ nfl_wfs <-
     verbose   = TRUE
   )
 
-# Efficient Tuning of models in workflowset
+   # Efficient Tuning of models in workflowset
 nfl_wfs <-
   nfl_wfs %>%
   workflowsets::workflow_map(
@@ -299,45 +494,76 @@ nfl_wfs <-
     verbose   = TRUE
   )
 
-# Stop parrallelization
+  # Stop parrallelization
 modeltime::parallel_stop()
-
+# nfl_wfs$result[[1]]
 rank_results(nfl_wfs)
-
+# nfl_wfs$result[[6]][1]
+# rank_results(nfl_wfs[c(1:4),])
 # Comparing Accuracy and ROC AUC of 7 models
 class_mod_comp_plot <-
   nfl_wfs %>%
+  # nfl_wfs[c(1:4),] %>%
   autoplot() + 
   labs(
     col = "",
     title    = "Classification Model comparisons",
     subtitle = "Predicting wins"
-  ) 
+  ) +
+  apatheme
 
-class_mod_comp_plot
-
+class_mod_comp_plot 
+  # scale_y_continuous(limits = c(0, 1))
+plotly::ggplotly(class_mod_comp_plot)
 save_path <- "D:/nfl/classification/"
 
-saveRDS(nfl_wfs, paste0(save_path, "wfs/win_classification_wfs.rds"))
- # ****************************
+# Save plot
+ggsave(
+  paste0(save_path, "plots/class_model_ranks.png"),
+  class_mod_comp_plot
+)
+
+
+saveRDS(nfl_wfs, paste0(save_path, "wfs/win_classification_wfs2.rds"))
+
+saveRDS(
+  nfl_split,
+  paste0(save_path, "splits/class_split_data.rds")
+)
+saveRDS(
+  nfl_train,
+  paste0(save_path, "splits/class_train_data.rds")
+)
+
+saveRDS(
+  nfl_test,
+  paste0(save_path, "splits/class_test_data.rds")
+)
+
+# ****************************
 # ---- Select best models ----
 # ****************************
 
-metrics_lst <- list()
+metrics_lst    <- list()
+conf_mat_lst   <- list()
+vip_lst        <- list()
 
-# rm(acc)
-i <- 3
+i <- 4
 # rm(i, model, model_name, mod_workflow, mod_final_fit, mod_last_fit, mod_workflow_fit, resample_roc_plot, vip_plot,
-#    mod_test,mod_train, train_acc, test_acc, overall_aucroc,
+#    mod_test,mod_train, train_acc, test_acc, overall_aucroc, test_metrics, train_metrics, mod_metrics, conf_mat, conf_mat_plot,conf_mat_lst, vip_lst, metrics_lst,
 # roc_auc_curve_plot, mod_results)
 
 # Extract wf set results
 for (i in 1:length(nfl_wfs$wflow_id)) {
   
+  logger::log_info("\n\nModel: {i} of {length(nfl_wfs$wflow_id)}")
+  
+  save_path <- "D:/nfl/classification/"
+  
   model       <- nfl_wfs$wflow_id[i]
   model_name  <- nfl_wfs$info[[i]]$model
   
-  model
+  # model
   
   mod_results <- 
     nfl_wfs %>% 
@@ -354,18 +580,19 @@ for (i in 1:length(nfl_wfs$wflow_id)) {
   # Model Engine text
   model_mode <- mod_workflow$fit$actions$model$spec$mode
   
-  logger::log_info("\n\nExtracting workflow & finalizing model fit:\n  --->  {model_name} - {model_mode}")
-  # mod_results$.metrics[[1]]
-  
-  # print(select_best(mod_results, metric = "rmse"))
-  # print(select_best(mod_results, metric = "rsq"))
-  select_best(mod_results, metric = "roc_auc")
-  # rm(mod_workflow_fit)
+  logger::log_info("\n\nExtracting workflow & finalizing model fit...\n  ---  {model_name} - {model_mode} --- ")
+  # mod_results$.metrics
+  # select_best(mod_results, metric = "roc_auc")
+  # select_best(mod_results, metric = "mn_log_loss")
+  # *************
+  # ---- Fit ----
+  # *************
+  # mod_results$.notes[[11]]$note
   # Finalize workflow fit
   mod_workflow_fit <- 
     mod_workflow %>% 
-    finalize_workflow(select_best(mod_results, metric = "roc_auc")) %>% 
-    # finalize_workflow(select_best(mod_results, metric = "rsq")) %>% 
+    finalize_workflow(select_best(mod_results, metric = "roc_auc")) %>%
+    # finalize_workflow(select_best(mod_results, metric = "mn_log_loss")) %>% 
     fit(data = nfl_train)
   
   # Fit model to split train/test data
@@ -388,46 +615,50 @@ for (i in 1:length(nfl_wfs$wflow_id)) {
     geom_path(show.legend = FALSE, alpha = 0.6, size = 1.2) +
     coord_equal() +
     labs(
-      title    = paste0("AUC-ROC Curve - ", model_name),
+      title    = paste0("ROC Curve - ", model_name),
       subtitle = "Resample results from 10 Fold Cross Validation",
       x        = "1 - Specificity",
       y        = "Sensitivity"
     ) 
-  # save ROC AUC plot to "aw-poudre-2020/dflow/boatable_day_plots/
-  resample_plot_path  <-   paste0(ml_data_path, "plots/win_class_resample_aucroc_", model_name, ".png")
-  logger::log_info("\n\nSaving Resamples AUC-ROC curve: \n{resample_plot_path}")
-  
-  # Export plot
-  ggsave(
-    resample_plot_path,
-    plot   = resample_roc_plot
-  )
+  resample_roc_plot
+  # *************
+  # ---- VIP ----
+  # *************
   
   # Plot variable importance if avaliable for model
   tryCatch( 
     {
-      # vip_plot <-
-      mod_last_fit %>% 
+      vip_plot <-
+        mod_last_fit %>% 
         pluck(".workflow", 1) %>%   
         extract_fit_parsnip() %>% 
-        # vip::vip() + 
-        vip::vip(num_features = 50) +
+        vip::vip(num_features = 65) +
+        # vip::vip(num_features = 65,   metric = "mn_log_loss") +
         labs(
           title    = paste0("Variable Importance Scores - ", model_name),
-          subtitle = "Regression",
+          subtitle = "Win classification",
           y        = "Importance",
           x        = "Variables"
         )
+      vip_plot
       
-      # save ROC AUC plot to "aw-poudre-2020/dflow/boatable_day_plots/
-      vip_path  <-   paste0(ml_data_path, "plots/win_class_vip_", model_name, ".png")
-      logger::log_info("\n\nSaving Variable Importance plot:\n{vip_path}")
-      
-      # Export plot
+      # Save VIP plot
       ggsave(
-        vip_path,
+        paste0(save_path, "plots/vip_", model_name, ".png"),
         plot   = vip_plot
       )
+      
+      vip_df <-
+        mod_last_fit %>% 
+        pluck(".workflow", 1) %>%   
+        extract_fit_parsnip() %>% 
+        vip::vi() %>% 
+        dplyr::mutate(
+          model  = model_name
+          )
+      
+      vip_lst[[i]] <- vip_df
+      
     },
     error = function(e) {
       logger::log_error('Variable Importance is not avalaible for {model_name} model')
@@ -449,44 +680,90 @@ for (i in 1:length(nfl_wfs$wflow_id)) {
     bind_cols(predict(mod_final_fit, nfl_test, type = "prob")) %>%
     bind_cols(dplyr::select(nfl_test, win)) 
   
-  # Train accuracy
-  train_acc <- 
+  # Train metrics
+  train_metrics <- 
     mod_train %>% 
-    accuracy(truth = win, .pred_class) %>% 
-    mutate(
+    yardstick::metrics(truth = win, estimate = .pred_class, .pred_1) %>% 
+    dplyr::mutate(
       data   = "train",
       model  = model_name
     )
-  print(train_acc)
-  # Test accuracy
-  test_acc <- 
-    mod_test %>% 
-    accuracy(truth = win, .pred_class) %>% 
-    mutate(
+  
+  # Test metrics
+  test_metrics <- 
+     mod_test %>% 
+     yardstick::metrics(truth = win, estimate = .pred_class, .pred_1) %>% 
+     dplyr::mutate(
       data   = "test",
       model  = model_name
-    )
-  print(test_acc)
-  # class(mod_results)
-  conf_mat(mod_train, truth = win, .pred_class)
-  # overall AUC ROC
-  overall_aucroc <-
-    mod_test %>% 
-    yardstick::roc_auc(
-      truth = win,
-      c(names(mod_test)[2:3]),
-      estimator = "hand_till"
-    ) %>%
-    mutate(
-      data   = "test",
+      )
+   
+  # print(train_metrics)
+  # print(test_metrics)
+  
+  # Model train/test metrics
+  mod_metrics <- dplyr::bind_rows(train_metrics, test_metrics)
+  
+  print(mod_metrics)
+  
+  # Keep metrics
+  metrics_lst[[i]] <- mod_metrics
+  
+  # *********************
+  # ---- Conf Matrix ----
+  # *********************
+  
+  # confusion matrix
+  conf_mat <-
+      mod_test %>%
+      conf_mat(truth = win, .pred_class) %>% 
+      .$table %>% 
+      as.data.frame() %>%
+      dplyr::mutate(
+        goodbad = ifelse(Prediction == Truth, "good", "bad"),
+        prop    = Freq/sum(Freq),
+        Prediction = dplyr::case_when(
+          Prediction == 1 ~ "Model Predicts win",
+          Prediction == 0 ~ "Model Predicts loss"
+        ),
+        Truth = dplyr::case_when(
+          Truth == 1 ~ "Actual win",
+          Truth == 0 ~ "Actual loss"
+        )
+      ) 
+  
+  # Plot confusion matrix
+  conf_mat_plot <-
+      conf_mat %>% 
+      ggplot(aes(x = Prediction,
+                 y = Truth, 
+                 fill = goodbad)) +
+      geom_tile(aes(alpha = prop)) +
+      scale_fill_manual(values = c(good = "#71CD5F", bad = "red")) + 
+      geom_text(aes(label = sprintf("%1.0f", Freq)), vjust = 1) +
+      # scale_fill_gradient( low = "pink", high  = "dodgerblue1", trans = "log" ) +
+      labs(
+        title    = paste0("Confusion matrix - ", model_name),
+        # subtitle = "Number of correct/incorrect predictions",
+        x        = "Prediction",
+        y        = "Truth"
+      ) +
+      apatheme +
+      theme(
+        legend.position = "none",
+        axis.title =  element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.text.x = element_text(size = 12)
+      )
+  conf_mat_plot
+  conf_mat_df <-
+    conf_mat %>% 
+    dplyr::tibble() %>%
+    dplyr::mutate(
       model  = model_name
-    )
-  # data(hpc_cv)
+      )
   
-  # Accuracy
-  acc <- bind_rows(train_acc, test_acc, overall_aucroc)
-  
-  class_metrics_lst[[i]] <- acc
+  conf_mat_lst[[i]] <- conf_mat_df
   
   # AUC-ROC One vs All Curve
   roc_auc_curve_plot <-
@@ -497,44 +774,614 @@ for (i in 1:length(nfl_wfs$wflow_id)) {
     )  %>% 
     ggplot2::autoplot() +
     labs(
-      title    = paste0("AUC-ROC - ", model_name),
-      subtitle = "Final fitted model using tuned hyperparameters",
+      title    = paste0("ROC Curve - ", model_name),
+      subtitle = "Final fitted model with tuned hyperparameters",
       x        = "1 - Specificity",
       y        = "Sensitivity"
-    ) 
-  # th
+    ) + 
+    apatheme
+  roc_auc_curve_plot
+  logger::log_info("\n\nSaving model and plots...\n{model_name} - {model_mode}")
   
-  
-  # save ROC AUC plot to "aw-poudre-2020/dflow/boatable_day_plots/
-  rocauc_plot_path  <-   paste0(ml_data_path, "plots/win_class_aucroc_", model_name, ".png")
-  logger::log_info("\n\nSaving final fitted AUC ROC curve:\n{rocauc_plot_path}")
+  # save resample ROC AUC plot
+  ggsave(
+    paste0(save_path, "plots/resample_roc_curve_", model_name, ".png"),
+    plot   = resample_roc_plot
+  )
   
   # Export plot
   ggsave(
-    rocauc_plot_path,
+    paste0(save_path, "plots/roc_curve_", model_name, ".png"),
     plot   = roc_auc_curve_plot
+  )
+  
+  # Export plot
+  ggsave(
+    paste0(save_path, "plots/conf_matrix_", model_name, ".png"),
+    plot   = conf_mat_plot
   )
   
   # Save Workflows/Resample results/Final fitted model
   saveRDS(
     mod_workflow_fit, 
-    paste0(ml_data_path, "wf/win_class_workflow_", model_name, ".rds")
+    paste0(save_path, "wf/win_workflow_", model_name, ".rds")
   )
   
   saveRDS(
     mod_last_fit,    
-    paste0(ml_data_path, "resamples/win_class_resamples_", model_name, ".rds")
+    paste0(save_path, "resamples/win_resamples_", model_name, ".rds")
   )
   
   saveRDS(
     mod_final_fit, 
-    paste0(ml_data_path, "fit/win_class_", model_name, ".rds")
+    paste0(save_path, "fit/win_model_", model_name, ".rds")
   )
   
   
   
 }
 
+ # Variable importance values
+vip_df       <- dplyr::bind_rows(vip_lst)
+
+# Metric set per model
+metrics_df   <- dplyr::bind_rows(metrics_lst)
+
+# Confusion matrix table per model
+conf_mat_df  <- dplyr::bind_rows(conf_mat_lst)
+
+# save 
+saveRDS(vip_df,  paste0(save_path, "metrics/win_variable_importance.rds"))
+saveRDS(metrics_df, paste0(save_path, "metrics/win_metrics.rds"))
+saveRDS(conf_mat_df,  paste0(save_path, "metrics/win_conf_matrix.rds"))
+
+# ***************************************************************************************
+# ***************************************************************************************
+
+metrics_df %>% 
+  dplyr::filter(.metric != "kap") %>% 
+  # tidyr::pivot_wider(names_from = .metric, values_from = .estimate) %>% 
+  ggplot() +
+  geom_point(aes(x = model, y = .estimate, col = .metric)) +
+  theme(
+    axis.text.x = element_text(angle = -45)
+  )+
+  facet_grid(data~.metric)
+
+# ********************
+# ---- Model Eval ----
+# ********************
+
+# Logisitc regression model
+log_reg_model <- readRDS("D:/nfl/classification/fit/win_model_logistic_reg.rds")
+
+# XGBoost model
+xgb_model <- readRDS("D:/nfl/classification/fit/win_model_boost_tree.rds")
+
+# SVM RBF model
+svm_model <- readRDS("D:/nfl/classification/fit/win_model_svm_poly.rds")
+
+# class(xgb_model)
+# Holdout year
+holdout_df <-
+  model_dat %>% 
+  dplyr::filter(season == 2020, home == 1) %>% 
+  # dplyr::select(-spread_line, -home)
+  # dplyr::filter(season != 2019, home == 1) %>%
+  dplyr::select(-abs_spread_line, -home, -home_fav, -spread_line) %>% 
+  dplyr::select(season, week, game_id, team, opponent, fav, win, 
+                div_game, rest_days, opp_rest_days, elo, opp_elo,
+                score_diff, opp_score_diff,
+                score_diff_qtr_1, opp_score_diff_qtr_1, win_pct, away_win_pct,
+                home_win_pct,  opp_win_pct, opp_away_win_pct,
+                opp_home_win_pct, qb_epa, opp_qb_epa,
+                third_down_pct, opp_third_down_pct, 
+                score_drives, opp_score_drives)
+
+pred_holdout <- 
+  mod_final_fit %>% 
+  augment(holdout_df) %>% 
+  # bind_cols(predict(xgb_model, holdout_df, type = "prob")) %>%
+  dplyr::select(season, week, game_id, team, opponent, win, fav, .pred_class, .pred_1, .pred_0)
+
+correct <- 
+  pred_holdout %>% 
+  dplyr::mutate(
+    actual_outcome = dplyr::case_when(
+      win == 1 ~ "win",
+      win == 0 ~ "loss"
+    ),
+    vegas_pred = dplyr::case_when(
+      fav == 1 ~ "win",
+      fav == 0 ~ "loss"
+    ),
+    model_pred = dplyr::case_when(
+      .pred_class == 1 ~ "win",
+      .pred_class == 0 ~ "loss"
+    )
+    # vegas_correct = dplyr::case_when(
+    #   fav == 1 & win == 1 ~ "TP",
+    #   fav == 0 & win == 0 ~ "TN",
+    #   fav == 1 & win == 0 ~ "FP",
+    #   fav == 0 & win == 1 ~ "FN"
+    # ), 
+    # mod_correct = dplyr::case_when(
+    #   .pred_class == 1 & win == 1 ~ "TP",
+    #   .pred_class == 0 & win == 0 ~ "TN",
+    #   .pred_class == 1 & win == 0 ~ "FP",
+    #   .pred_class == 0 & win == 1 ~ "FN"
+    # )
+  ) %>% 
+  dplyr::arrange(week) %>% 
+  dplyr::select(week, home_team = team, away_team = opponent, actual_outcome, vegas_pred, model_pred)
+
+# DT::datatable(correct)
+# rm(fav_dogs)
+
+vegas_picks <-
+  pred_holdout %>% 
+  dplyr::select(-season) %>% 
+    dplyr::mutate(
+      favorite = dplyr::case_when(
+        fav == 1 ~ team,
+        fav == 0 ~ opponent
+      ),
+      underdog = dplyr::case_when(
+        fav == 1 ~ opponent,
+        fav == 0 ~ team
+      ),
+      fav_dog = dplyr::case_when(
+        fav == 1 ~ "favorite",
+        fav == 0 ~ "underdog"
+      )
+    ) %>% 
+  dplyr::mutate(    
+    actual_outcome = dplyr::case_when(
+      win == 1 ~ "win",
+      win == 0 ~ "loss"
+    ),
+    vegas_pred = dplyr::case_when(
+      fav == 1 ~ "win",
+      fav == 0 ~ "loss"
+    ),
+    model_pred = dplyr::case_when(
+      .pred_class == 1 ~ "win",
+      .pred_class == 0 ~ "loss"
+    )
+  ) %>% 
+  dplyr::select(week, favorite, underdog, actual_outcome, vegas_pred, model_pred, predict_prob = .pred_1) %>% 
+  dplyr::mutate(across(where(is.numeric), round, 3)) 
+  
+    # tidyr::pivot_wider(names_from = fav_dog, values_from = fav_team)
+  # tidyr::pivot_longer(cols = c(team, opponent)) %>% 
+
+vegas_picks
+# vegas_picks_wide <- 
+  # vegas_picks %>% 
+  #   dplyr::group_by(game_id)
+  # tidyr::pivot_wider(id_cols = c(-name), names_from = value, values_from = fav_dog)
+  
+pred_outcomes <-
+  pred_holdout %>% 
+  dplyr::select(-season, -game_id) %>% 
+  dplyr::mutate(
+    # vegas_outcome = dplyr::case_when(
+    #   fav == 1 & win == 1 ~ "TP",
+    #   fav == 0 & win == 0 ~ "TN",
+    #   fav == 1 & win == 0 ~ "FP",
+    #   fav == 0 & win == 1 ~ "FN"
+    # ),
+    # mod_outcome = dplyr::case_when(
+    #   .pred_class == 1 & win == 1 ~ "TP",
+    #   .pred_class == 0 & win == 0 ~ "TN",
+    #   .pred_class == 1 & win == 0 ~ "FP",
+    #   .pred_class == 0 & win == 1 ~ "FN"
+    # )
+    actual_outcome = dplyr::case_when(
+      win == 1 ~ "win",
+      win == 0 ~ "loss"
+    ),
+    vegas_pred = dplyr::case_when(
+      fav == 1 ~ "win",
+      fav == 0 ~ "loss"
+    ),
+    model_pred = dplyr::case_when(
+      .pred_class == 1 ~ "win",
+      .pred_class == 0 ~ "loss"
+    )
+  ) %>% 
+  dplyr::arrange(week) %>% 
+    dplyr::mutate(
+      vegas_pct = dplyr::case_when(
+        actual_outcome == vegas_pred ~ 1,
+        actual_outcome != vegas_pred ~ 0
+      ),
+      model_pct = dplyr::case_when(
+        actual_outcome == model_pred ~ 1,
+        actual_outcome != model_pred ~ 0
+      )
+    ) %>% 
+    dplyr::group_by(week) %>% 
+    dplyr::summarize(
+      games = n(),
+      .pred_1 = mean(.pred_1, na.rm = T),
+      .pred_0 = mean(.pred_0, na.rm = T),
+      vegas_sum   = sum(vegas_pct, na.rm = T),
+      model_sum   = sum(model_pct, na.rm = T)
+    ) %>% 
+  dplyr::mutate(
+    vegas_pct = vegas_sum/games,
+    model_pct = model_sum/games
+  ) %>% 
+  round(2)
+# linetype="dotted"
+unique(pred_outcomes$week)
+
+  
+  pct_correct_plot <- 
+    pred_outcomes %>%
+    dplyr::filter(week <= 22) %>% 
+    tidyr::pivot_longer(cols = c(vegas_pct, model_pct)) %>%
+    # tidyr::pivot_longer(cols = c(model_pct)) %>%
+    dplyr::mutate(
+      name = dplyr::case_when(
+        name == "model_pct" ~ "Correct Model Predictions",
+        name == "vegas_pct" ~ "Correct Vegas Predictions",
+      ),
+      name = factor(name, levels = c("Correct Vegas Predictions", "Correct Model Predictions"))
+    ) %>% 
+    ggplot() +
+    geom_hline(yintercept = 0.5, size = 1, alpha = 0.7, linetype = "dashed") +
+    geom_line(aes(x = week, y = value, col = name,
+                  alpha = name, size = name)) +
+    scale_y_continuous(limits = c(0, 1),
+                       labels = function(x) paste0(x*100, "%")) +
+    scale_x_continuous(breaks = seq(1, 22, 1), limits = c(1, 22)) +
+    # scale_color_manual(values = c("red3", "black")) +
+    scale_color_manual(values = c("midnightblue", "red3")) +
+    scale_size_manual(values = c(1, 2.5)) +
+    scale_alpha_manual(values=c(0.8, 0.5),guide=F) +
+    labs(
+      title = "Picking Game winners - (2021)",
+      subtitle = "Model predictions vs. Vegas favorites",
+      x = "Week",
+      y = "% correct picks"
+    ) + 
+    apatheme +
+    theme(
+      panel.grid.minor.x = element_blank() ,
+    )
+  pct_correct_plot
+  
+  # Save plot
+  ggsave(
+    "D:/nfl/classification/plots/pct_correct_picks.png",
+    pct_correct_plot
+  )
+  
+pct_correct_box_plot <- 
+  pred_outcomes %>%
+  dplyr::filter(week <= 18) %>%
+  arrange(week) %>% 
+  dplyr::mutate(week = as.character(week)) %>% 
+  tidyr::pivot_longer(cols = c(vegas_pct, model_pct)) %>% 
+  dplyr::mutate(
+    name = dplyr::case_when(
+      name == "model_pct" ~ "Correct Model Predictions",
+      name == "vegas_pct" ~ "Correct Vegas Predictions",
+    ),
+    name = factor(name, levels = c("Correct Vegas Predictions", "Correct Model Predictions"))
+  ) %>% 
+  ggplot() +
+  geom_hline(yintercept = 0.5, size = 1, alpha = 0.7, linetype = "dashed") +
+  geom_boxplot(aes(x = name, y = value, fill = name, alpha = name)) +
+  # geom_line(aes(x = week, y = value, col = name), size = 1.5) +
+  scale_y_continuous(limits = c(0, 1),
+                     labels = function(x) paste0(x*100, "%")) +
+  # scale_fill_manual(values = c("red3", "midnightblue")) +
+  scale_fill_manual(values = c("midnightblue", "red3")) +
+  # scale_size_manual(values = c(1, 2.5)) +
+  scale_alpha_manual(values=c(0.5, 0.5),guide=F) +
+  labs(
+    title = "Picking Game winners - (2021)",
+    subtitle = "Model predictions vs. Vegas favorites",
+    x = "",
+    y = "% correct picks"
+  ) + 
+  apatheme
+pct_correct_box_plot
+
+# Save plot
+ggsave(
+    "D:/nfl/classification/plots/pct_correct_picks_boxplot.png",
+    pct_correct_box_plot
+  )
+
+  # dplyr::group_by(week) %>% 
+    # count(vegas_outcome)
+    # count(actual_outcome, vegas_pred, model_pred)
+  # count(vegas_outcome, mod_outcome)
+  # dplyr::summarise(
+  #  n = n(),
+  #  
+  # )
+
+pred_outcomes %>%
+    dplyr::filter(week <= 17) %>% 
+    arrange(week)
+
+vegas_pred_pct <- 
+  model_dat %>% 
+  dplyr::filter(season == 2021, home == 1) %>% 
+  dplyr::select(season, week, game_id, team, opponent, win, fav) %>% 
+  conf_mat(truth = win, fav)  %>%
+  .$table %>% 
+  as.data.frame() %>%
+  dplyr::mutate(
+    goodbad = ifelse(Prediction == Truth, "good", "bad"),
+    prop    = Freq/sum(Freq),
+    Prediction = dplyr::case_when(
+      Prediction == 1 ~ "Model Predicts win",
+      Prediction == 0 ~ "Model Predicts loss"
+    ),
+    Truth = dplyr::case_when(
+      Truth == 1 ~ "Actual win",
+      Truth == 0 ~ "Actual loss"
+    )
+  ) %>% 
+  dplyr::mutate(
+    games = sum(Freq)
+  ) %>% 
+  dplyr::group_by(goodbad) %>% 
+  dplyr::summarise(pct_correct = sum(Freq)/games) %>% 
+  dplyr::ungroup()
+
+mod_pred_pct <- 
+  pred_holdout %>%
+  conf_mat(truth = win, .pred_class)  %>%
+  # conf_mat(truth = win, fav)  %>% 
+  .$table %>% 
+  as.data.frame() %>%
+  dplyr::mutate(
+    goodbad = ifelse(Prediction == Truth, "good", "bad"),
+    prop    = Freq/sum(Freq),
+    Prediction = dplyr::case_when(
+      Prediction == 1 ~ "Model Predicts win",
+      Prediction == 0 ~ "Model Predicts loss"
+    ),
+    Truth = dplyr::case_when(
+      Truth == 1 ~ "Actual win",
+      Truth == 0 ~ "Actual loss"
+    )
+  ) %>% 
+  dplyr::mutate(
+    games = sum(Freq)
+  ) %>% 
+  dplyr::group_by(goodbad) %>% 
+  dplyr::summarise(pct_correct = sum(Freq)/games) %>% 
+  dplyr::ungroup()
+vegas_pred_pct
+mod_pred_pct
+
+vegas_conf_mat <- 
+  pred_holdout %>%
+  # conf_mat(truth = win, .pred_class) %>%
+  conf_mat(truth = win, fav) %>%
+  # autoplot(type = "heatmap")
+  .$table %>% 
+  as.data.frame() %>%
+  dplyr::mutate(
+    goodbad = ifelse(Prediction == Truth, "good", "bad"),
+    prop    = Freq/sum(Freq),
+    Prediction = dplyr::case_when(
+      Prediction == 1 ~ "Model Predicts win",
+      Prediction == 0 ~ "Model Predicts loss"
+    ),
+    Truth = dplyr::case_when(
+      Truth == 1 ~ "Actual win",
+      Truth == 0 ~ "Actual loss"
+    )
+  ) 
+vegas_conf_mat %>% 
+  dplyr::mutate(
+    games = sum(Freq)
+  ) %>% 
+  dplyr::group_by(goodbad) %>% 
+  dplyr::summarise(pct_correct = sum(Freq)/games) %>% 
+  dplyr::ungroup()
+
+# Plot confusion matrix
+vegas_conf_mat_plot <-
+  vegas_conf_mat %>% 
+  ggplot(aes(x = Prediction,
+             y = Truth, 
+             fill = goodbad)) +
+  geom_tile(aes(alpha = prop)) +
+  scale_fill_manual(values = c(good = "#71CD5F", bad = "red")) + 
+  geom_text(aes(label = sprintf("%1.0f", Freq)), vjust = 1) +
+  # scale_fill_gradient( low = "pink", high  = "dodgerblue1", trans = "log" ) +
+  labs(
+    title    = paste0("Confusion matrix - ", model_name),
+    subtitle = "Vegas predictions",
+    x        = "Prediction",
+    y        = "Truth"
+  ) +
+  apatheme +
+  theme(
+    legend.position = "none",
+    axis.title =  element_text(size = 12),
+    axis.text.y = element_text(size = 12),
+    axis.text.x = element_text(size = 12)
+  )
+
+mod_conf_mat <- 
+  pred_holdout %>%
+  conf_mat(truth = win, .pred_class) %>%
+  # autoplot(type = "heatmap")
+  .$table %>% 
+  as.data.frame() %>%
+  dplyr::mutate(
+    goodbad = ifelse(Prediction == Truth, "good", "bad"),
+    prop    = Freq/sum(Freq),
+    Prediction = dplyr::case_when(
+      Prediction == 1 ~ "Model Predicts win",
+      Prediction == 0 ~ "Model Predicts loss"
+    ),
+    Truth = dplyr::case_when(
+      Truth == 1 ~ "Actual win",
+      Truth == 0 ~ "Actual loss"
+    )
+  ) 
+
+mod_conf_mat %>% 
+  dplyr::mutate(
+    games = sum(Freq)
+  ) %>% 
+  dplyr::group_by(goodbad) %>% 
+  dplyr::summarise(pct_correct = sum(Freq)/games) %>% 
+  dplyr::ungroup()
+
+# Plot confusion matrix
+mod_conf_mat_plot <-
+  mod_conf_mat %>% 
+  ggplot(aes(x = Prediction,
+             y = Truth, 
+             fill = goodbad)) +
+  geom_tile(aes(alpha = prop)) +
+  scale_fill_manual(values = c(good = "#71CD5F", bad = "red")) + 
+  geom_text(aes(label = sprintf("%1.0f", Freq)), vjust = 1) +
+  # scale_fill_gradient( low = "pink", high  = "dodgerblue1", trans = "log" ) +
+  labs(
+    title    = paste0("Confusion matrix - ", model_name),
+    subtitle = "Model predictions",
+    x        = "Prediction",
+    y        = "Truth"
+  ) +
+  apatheme +
+  theme(
+    legend.position = "none",
+    axis.title =  element_text(size = 12),
+    axis.text.y = element_text(size = 12),
+    axis.text.x = element_text(size = 12)
+  )
+
+vegas_conf_mat_plot
+mod_conf_mat_plot
+  
+tmp <- 
+  correct %>% 
+  dplyr::mutate(
+    diff = dplyr::case_when(
+      vegas_pred != model_pred ~ 1,
+      TRUE ~ 0
+    ),
+    diff_correct = dplyr::case_when(
+      model_pred == actual_outcome & vegas_pred != actual_outcome ~ 1,
+      model_pred != actual_outcome & vegas_pred == actual_outcome ~ 0
+    )
+  ) 
+tmp %>% 
+  dplyr::filter(diff_correct == 1)
+
+tmp %>% 
+  dplyr::filter(diff_correct == 0)
+
+tmp %>% 
+  dplyr::filter(diff == 1)
+
+# ***************************************************************************************
+# ***************************************************************************************
+
+
+
+
+
+
+game_spreads <- readRDS(here::here("data", "football_closing_spread_lag.rds")) %>% 
+  dplyr::select(game_id, team, opponent, home, spread_line)
+
+holdout_df <- readRDS(here::here("data", "football_wins_lag.rds")) %>% 
+  dplyr::select(-contains("qtr_pts_6")) %>% 
+  dplyr::left_join(
+    dplyr::select(game_spreads, -home),
+    by = c("game_id", "team", "opponent")
+  ) %>%
+  dplyr::filter(season == 2021) %>% 
+  dplyr::select(-home, -week, -score_drives, -ndrives, -def_ndrives, -def_score_drives,
+                -opp_score_drives, -opp_ndrives, -opp_def_score_drives, -opp_def_ndrives,
+                -drive_time_of_possession_sec,  -opp_drive_time_of_possession_sec, 
+                # -pts_scored,
+                -score_diff_qtr_1, -score_diff_qtr_2, -score_diff_qtr_3,
+                -opp_score_diff_qtr_1, -opp_score_diff_qtr_2, -opp_score_diff_qtr_3,
+                -def_score_drives_pct, -opp_def_score_drives_pct, -def_third_down_pct,
+                -opp_def_third_down_pct, -def_qb_epa, -opp_def_qb_epa,
+                -qtr_pts_1, -qtr_pts_2, -qtr_pts_3,
+                -opp_qtr_pts_1, -opp_qtr_pts_2, -opp_qtr_pts_3,
+                -def_turnovers, -opp_def_turnovers, -score_diff, -opp_score_diff
+  ) %>%
+  dplyr::select(-contains("dscore_diff"), -contains("def_qtr_pts")) %>%
+  dplyr::mutate(
+    div_game  = factor(div_game, levels = c(1, 0)),
+    rest_days = dplyr::case_when(
+      rest_days < 7   ~  "short_rest",
+      rest_days == 7  ~  "normal_rest",
+      rest_days > 7   ~  "long_rest"
+    ),
+    opp_rest_days = dplyr::case_when(
+      opp_rest_days < 7   ~  "short_rest",
+      opp_rest_days == 7  ~  "normal_rest",
+      opp_rest_days > 7   ~  "long_rest"
+    ),
+    win = factor(win, levels = c(1, 0))
+  ) %>% 
+  dplyr::mutate(
+    across((contains("dscore")), ~replace(., is.na(.), 0))
+  ) %>% 
+  na.omit() %>%
+  dplyr::mutate(across(where(is.numeric), round, 4))
+  
+ vegas_wins <- readRDS(here::here("data", "football_wins_lag.rds")) 
+
+vegas_wins <- 
+  vegas_wins %>% 
+  dplyr::select(-contains("qtr_pts_6")) %>% 
+  dplyr::left_join(
+    dplyr::select(game_spreads, -home),
+    by = c("game_id", "team", "opponent")
+  ) %>%
+  dplyr::select(season, week, game_id, home, win, spread = spread_line) %>% 
+  dplyr::filter(home == 1) %>% 
+  dplyr::mutate(
+  vegas_outcome = dplyr::case_when(
+    win == 1 & spread < 0 ~ 1,
+    win == 0 &spread >= 0 ~ 1,
+    win == 1 & spread >= 0 ~ 0,
+    win == 0 & spread < 0 ~ 0
+    # spread < 0 ~ 1,
+    # spread >= 0 ~ 0
+    # home == 1 & win == 1 & spread <= 0 ~ 1,
+    # home == 1 & win == 0 & spread <= 0 ~ 0,
+    # home == 1 & win == 1 & spread > 0 ~ 0,
+    # home == 1 & win == 0 & spread > 0 ~ 1,
+    # home == 0 & win == 1 & spread <= 0 ~ 0,
+    # home == 0 & win == 0 & spread <= 0 ~ 1
+    # home == 0 & win == 1 & spread > 0 ~ 0,
+    # home == 0 & win == 0 & spread > 0 ~ 1
+  ))
+  # actual_outcome = dplyr::case_when(
+  #   win == 1 & vegas_outcome == 1 ~ 1,
+  #   win == 0 & vegas_outcome == 0 ~ 1,
+  #   win == 1 & vegas_outcome == 0 ~ 0, 
+  #   win == 0 & vegas_outcome == 1 ~ 0
+  #    )
+  # ) 
+
+vegas_wins %>% 
+  dplyr::group_by(season) %>% 
+  dplyr::summarise(
+    n = n(),
+    vegas_outcome = sum(vegas_outcome, na.rm = T)
+  )
 
 
 
