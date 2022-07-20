@@ -41,8 +41,9 @@ data_path  <-  here::here("data")
 
 # Read in joined offense defense data
 # football     <- readRDS(here::here("data", "football_wins.rds"))
-football     <- readRDS(here::here("data", "football_wins2.rds"))
-win_lag  <- readRDS(here::here("data", "football_wins_lag.rds"))
+# football     <- readRDS(here::here("data", "football_wins2.rds"))
+football     <- readRDS(here::here("data", "football_wins.rds"))
+win_lag      <- readRDS(here::here("data", "football_wins_lag.rds"))
 game_spreads <- readRDS(here::here("data", "football_spread.rds"))
 spreads_lag  <- readRDS(here::here("data", "football_spread_lag.rds"))
 offense      <- readRDS(here::here("data", "offensive.rds"))
@@ -460,8 +461,177 @@ spread_lag_cor <-
 #   width = 12,
 #   height = 8
 # )
+# *********************
+# ---- ELO Ratings ----
+# *********************
+  
+nfl_elo <-  
+  football %>% 
+  dplyr::select(season, week, team, elo) %>% 
+  dplyr::group_by(team) %>% 
+  dplyr::mutate(
+    mean_elo = mean(elo, na.rm = T)
+  ) %>% 
+  dplyr::left_join(
+    nflfastR::teams_colors_logos,
+    by = c("team" = "team_abbr")
+  ) %>% 
+    dplyr::arrange(mean_elo) %>%
+    dplyr::ungroup()
 
+  nfl_elo_plot <- 
+    nfl_elo %>% 
+    ggplot() +
+    geom_boxplot(aes(x = reorder(team, mean_elo), 
+                     y = elo, 
+                     fill = team_nick, color = team_nick)) +
+    scale_fill_manual(
+      breaks = nfl_elo$team_nick,
+      values = c(nfl_elo$team_color)
+    ) +
+    scale_color_manual(
+      breaks = nfl_elo$team_nick,
+      values = c(nfl_elo$team_color2)
+    ) +
+    labs(
+      title    = "Which teams are consistently ranked at the top of the league?", 
+      subtitle = "Team Elo Ratings (1999 - 2021)",
+      x        = "Team", 
+      y        = "Weekly ELO rating"
+      # fill = ""
+    ) + 
+    apatheme +
+    # theme_bw() +
+    theme(
+      legend.position = "none",
+      axis.text.x = element_text(angle = -45, hjust = .1)
+    )
+  
+ggsave(
+    here::here("img", "team_elo_ratings.png"),
+    nfl_elo_plot,
+    width = 12,
+    height = 8
+  )
 
+top_season_elo <-
+  football %>% 
+  dplyr::select(season, week, team, elo) %>% 
+  dplyr::group_by(season, team) %>% 
+  dplyr::summarize(
+    elo = mean(elo, na.rm = T)
+  ) %>% 
+    dplyr::group_by(season, team) %>%
+    dplyr::arrange(-elo, .by_group = F) %>% 
+    dplyr::ungroup() %>% 
+    dplyr::slice(1:20) %>% 
+    dplyr::mutate(
+      team_season_full = paste0(season, " ", team),
+      team_season = paste0(substr(season, 3, 4), " ", team)
+      # team_season = paste0(team, " ", substr(season, 3, 4))
+      # team_season = paste0(team, " ", season)
+    ) %>% 
+  dplyr::left_join(
+    nflfastR::teams_colors_logos,
+    by = c("team" = "team_abbr")
+  ) 
+
+top_season_elo
+
+top_season_elo_plot <- 
+  top_season_elo %>% 
+  ggplot(aes(x = reorder(team_season_full, elo),  y = elo, label = team_season)) +
+  geom_point(aes(color = team_nick, label = team_season),  size = 4) +
+  coord_flip() +
+  # geom_text() +
+  ggrepel::geom_text_repel(
+    min.segment.length = unit(0, 'lines')
+    ) +
+  scale_color_manual(
+    breaks = top_season_elo$team_nick,
+    values = c(top_season_elo$team_color2)
+  ) +
+  scale_y_continuous(limits = c(min(top_season_elo$elo), max(top_season_elo$elo))) +
+  labs(
+    title    = "Top 20 highest ranked seasons", 
+    subtitle = "Season Average Team Elo Ratings (1999 - 2021)",
+    x        = "Team", 
+    y        = "Weekly ELO rating",
+  ) + 
+  apatheme 
+
+top_season_elo_plot
+
+ggsave(
+  here::here("img", "top_team_elo_ratings.png"),
+  top_season_elo_plot,
+  width = 12,
+  height = 8
+)
+
+low_season_elo <-
+  football %>% 
+  dplyr::select(season, week, team, elo) %>% 
+  dplyr::group_by(season, team) %>% 
+  dplyr::summarize(
+    elo = mean(elo, na.rm = T)
+  ) %>% 
+  dplyr::group_by(season, team) %>%
+  dplyr::arrange(elo, .by_group = F) %>% 
+  dplyr::ungroup() %>% 
+  dplyr::slice(1:20) %>% 
+  dplyr::mutate(
+    team_season_full = paste0(season, " ", team),
+    team_season = paste0(substr(season, 3, 4), " ", team)
+    # team_season = paste0(team, " ", substr(season, 3, 4))
+    # team_season = paste0(team, " ", season)
+  ) %>% 
+  dplyr::left_join(
+    nflfastR::teams_colors_logos,
+    by = c("team" = "team_abbr")
+  ) 
+
+low_season_elo
+
+low_season_elo_plot <-
+  low_season_elo %>% 
+  ggplot(aes(x = reorder(team_season_full, elo),  y = elo, label = team_season)) +
+  geom_point(aes(color = team_nick, label = team_season),  size = 4) +
+  coord_flip() +
+  # geom_text() +
+  ggrepel::geom_text_repel(
+    min.segment.length = unit(0, 'lines')
+  ) +
+  scale_color_manual(
+    breaks = low_season_elo$team_nick,
+    values = c(low_season_elo$team_color2)
+  ) +
+  scale_y_continuous(limits = c(min(low_season_elo$elo), max(low_season_elo$elo))) +
+  labs(
+    title    = "Bottom 20 lowest ranked seasons", 
+    subtitle = "Season Average Team Elo Ratings (1999 - 2021)",
+    x        = "Team", 
+    y        = "Weekly ELO rating",
+  ) + 
+  apatheme 
+
+low_season_elo_plot
+
+ggsave(
+  here::here("img", "bottom_team_elo_ratings.png"),
+  low_season_elo_plot,
+  width = 12,
+  height = 8
+)
+
+team_elo <-
+  nfl_elo %>% 
+  dplyr::group_by(team) %>% 
+  dplyr::summarise(elo = mean(elo, na.rm = T)) %>% 
+  dplyr::arrange(-elo) %>% 
+  dplyr::ungroup()
+  
+  
 # ***************************
 # ---- Season win totals ----
 # ***************************
