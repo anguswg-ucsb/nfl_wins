@@ -49,6 +49,26 @@ spreads_lag  <- readRDS(here::here("data", "football_spread_lag.rds"))
 offense      <- readRDS(here::here("data", "offensive.rds"))
 defense      <- readRDS(here::here("data", "defensive.rds"))
 
+# model_dat <- readRDS(here::here("data", "football_wins_lag_elo.rds"))
+model_dat_lag <- readRDS(here::here("data", "football_wins_lag_elo.rds")) %>% 
+  # dplyr::filter(season != 2021, home == 1) %>% 
+  # dplyr::filter(home == 1) %>% 
+  dplyr::select(-abs_spread_line, -home_fav, -fav, -spread_line) %>% 
+  dplyr::select(season, week, game_id, team, opponent, win, home, div_game, rest_days, 
+                opp_rest_days, elo, opp_elo, score_diff, 
+                opp_score_diff, turnovers, opp_turnovers,
+                # score_diff_qtr_1, opp_score_diff_qtr_1,
+                win_pct, away_win_pct, home_win_pct, 
+                opp_win_pct, opp_away_win_pct, opp_home_win_pct, qb_epa, opp_qb_epa, 
+                third_down_pct, opp_third_down_pct,
+                score_drives, opp_score_drives) 
+
+model_dat <- 
+  football %>%
+  dplyr::select(names(model_dat_lag)) %>% 
+  # dplyr::filter(home == 1) %>% 
+  dplyr::select(-home)
+
 # Add team colors for plotting
 football <- 
   football %>% 
@@ -630,8 +650,109 @@ team_elo <-
   dplyr::summarise(elo = mean(elo, na.rm = T)) %>% 
   dplyr::arrange(-elo) %>% 
   dplyr::ungroup()
-  
-  
+
+# *********************
+# ---- Correlation ----
+# ********************* 
+
+corr_df <-
+  # football %>%
+  model_dat %>%
+  dplyr::mutate(win = as.numeric(win)) %>%
+  dplyr::select(where(is.numeric)) %>%
+  # dplyr::select( -season, -week, -div_game) %>%
+  dplyr::select( -season, -week, -div_game, -contains("opp")) %>%
+  cor(use =  "pairwise.complete.obs") %>% 
+  round(2) %>% 
+  reshape2::melt() 
+
+corr_plot <-
+  corr_df %>% 
+  ggplot(
+    aes(x    = Var1,
+        y    = Var2,
+        fill = value)) +
+  geom_tile() + 
+  geom_text(aes(Var2, Var1, label = value),
+            color = "black", size = 4) +
+  scale_fill_gradient2(low="darkred", high="darkgreen", guide="colorbar") +
+  # viridis::scale_fill_viridis(direction = -1, option = "F") +
+  labs(
+    # title = "Home team correlation matrix",
+    # title = "Home team - Correlation matrix",
+    title = "Correlation matrix",
+    x = "",
+    y = "", 
+    fill = "Coefficient"
+  ) +
+  apatheme + 
+  theme(
+    axis.text.x = element_text(angle = -45, 
+                                   vjust = 0.5,
+                                   hjust = 0.1)
+    )
+corr_plot
+
+ggsave(
+  here::here("img", "correlation_home_team.png"),
+  corr_plot,
+  width = 12,
+  height = 8
+)
+
+opp_corr_df <-
+  # football %>%
+  model_dat %>%
+  dplyr::mutate(win = as.numeric(win)) %>%
+  dplyr::select(where(is.numeric)) %>%
+  dplyr::select( -season, -week, -div_game) %>%
+  dplyr::select(win, contains("opp")) %>%
+  # dplyr::select( -season, -week,  -contains("opp")) %>%
+  cor(use =  "pairwise.complete.obs") %>% 
+  round(2) %>% 
+  reshape2::melt() 
+
+opp_corr_plot <-
+  opp_corr_df %>% 
+  ggplot(
+    aes(x    = Var1,
+        y    = Var2,
+        fill = value)) +
+  geom_tile() + 
+  geom_text(aes(Var2, Var1, label = value),
+            color = "black", size = 4) +
+  scale_fill_gradient2(low="darkred", high="darkgreen", guide="colorbar") +
+  # viridis::scale_fill_viridis(direction = -1, option = "F") +
+  labs(
+    title = "Correlation matrix - Away team",
+    x = "",
+    y = "", 
+    fill = "Coefficient"
+  ) +
+  apatheme + 
+  theme(axis.text.x = element_text(angle = -45, 
+                                   vjust = 0.5,
+                                   hjust = 0.1
+                                   ))
+
+opp_corr_plot
+
+ggsave(
+  here::here("img", "correlation_away_team.png"),
+  opp_corr_plot,
+  width = 12,
+  height = 8
+)
+
+library(patchwork)
+all_corr_plot <- corr_plot + opp_corr_plot
+all_corr_plot
+ggsave(
+  here::here("img", "correlation.png"),
+  all_corr_plot,
+  width = 14,
+  height = 6
+)
 # ***************************
 # ---- Season win totals ----
 # ***************************

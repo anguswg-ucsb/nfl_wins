@@ -199,8 +199,74 @@ off_def_data <-
     dplyr::select(nfl_elo, -win),
     by = c("season", "week", "game_id", "team")
   ) 
+opp_off_def_data <- 
+  team_records %>% 
+  dplyr::select(season, week, game_id, team, opponent, rest_days,
+                win_pct, home_win_pct, away_win_pct) %>%
+  dplyr::left_join(
+    dplyr::select(game_spreads, -home_away),
+    by = c("season", "week", "game_id", "team")
+  ) %>% 
+  dplyr::left_join(
+    off_df,
+    by = c("season", "week", "game_id", "team" = "posteam")
+  ) %>% 
+  dplyr::left_join(
+    def_df,
+    by = c("season", "week", "game_id", "team" = "defteam")
+  ) %>% 
+  dplyr::left_join(
+    dplyr::select(nfl_elo, -win),
+    by = c("season", "week", "game_id", "team")
+  ) %>% 
+  setNames(c("season", "week", "game_id", "team", "opponent", paste0("opp_", names(.)[6:45]))) %>%
+  dplyr::select(-team)
 
-saveRDS(off_def_data, here::here("data", "football_wins.rds"))
+
+team_off_def <- 
+  off_def_data %>%
+  dplyr::left_join(
+    dplyr::select(opp_off_def_data, game_id, opponent, opp_rest_days:opp_elo),
+    by = c("game_id", "opponent")
+  ) %>% 
+  dplyr::mutate(
+    pts_scored      = qtr_pts_1 + qtr_pts_2 + qtr_pts_3 + qtr_pts_4,
+    pts_against     = def_qtr_pts_1 + def_qtr_pts_2 + def_qtr_pts_3 + def_qtr_pts_4,
+    point_diff      = pts_scored - pts_against,
+    opp_pts_scored  = opp_qtr_pts_1 + opp_qtr_pts_2 + opp_qtr_pts_3 + opp_qtr_pts_4,
+    opp_pts_against = opp_def_qtr_pts_1 + opp_def_qtr_pts_2 + opp_def_qtr_pts_3 + opp_def_qtr_pts_4,
+    opp_point_diff  = opp_pts_scored - opp_pts_against
+  ) %>%  
+  dplyr::mutate(across(where(is.numeric), round, 4)) %>% 
+  dplyr::select(-score_diff, -opp_score_diff) %>% 
+  dplyr::rename(
+    "score_diff"     = "point_diff", 
+    "opp_score_diff" = "opp_point_diff"
+  ) %>% 
+  dplyr::mutate(
+    home_fav = dplyr::case_when(
+      home == 1 & spread_line > 0 ~ 1,
+      spread_line == 0            ~ 0,
+      TRUE                        ~ 0 
+    ),
+    fav = dplyr::case_when(
+      home == 1 & spread_line > 0 ~ 1, 
+      home == 1 & spread_line < 0 ~ 0, 
+      home == 0 & spread_line < 0 ~ 1, 
+      home == 0 & spread_line > 0 ~ 0,
+      spread_line == 0            ~ 0,
+      TRUE                        ~ 0 
+    ),
+    abs_spread_line = abs(spread_line)
+  ) %>% 
+  dplyr::mutate(
+    home_fav         = factor(home_fav, levels = c(1, 0)),
+    fav              = factor(fav, levels = c(1, 0))
+    # rest_days        = factor(rest_days, levels = c("short_rest", "normal_rest", "long_rest")),
+    # opp_rest_days    = factor(opp_rest_days, levels = c("short_rest", "normal_rest", "long_rest"))
+  )
+
+saveRDS(team_off_def, here::here("data", "football_wins.rds"))
 
 # *********************************
 # ---- Season to date averages ----

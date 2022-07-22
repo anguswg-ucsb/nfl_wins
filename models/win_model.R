@@ -1,7 +1,7 @@
 
 remove(list = ls())  # clear all workspace variables
 
-library(tidyverse)
+ library(tidyverse)
 library(tidymodels)
 library(glmnet)
 library(doParallel)
@@ -916,9 +916,6 @@ svm_model <- readRDS("D:/nfl/classification/fit/win_model_svm_poly.rds")
 holdout_year <-
   model_dat %>% 
   dplyr::filter(season == 2021, home == 1) %>% 
-  # dplyr::filter(season == 2020, home == 1) %>% 
-  # dplyr::select(-spread_line, -home)
-  # dplyr::filter(season != 2019, home == 1) %>%
   dplyr::select(-abs_spread_line, -home, -home_fav, -spread_line) %>% 
   dplyr::select(season, week, game_id, team, opponent, fav, win, 
                 div_game, rest_days, opp_rest_days, elo, opp_elo,
@@ -979,33 +976,8 @@ colormatrix  <- ifelse(correct_year[, c(5, 6)] == correct_year[, c(4, 4)], "#85E
 correct_year %>% 
   flextable() %>% 
   bg(j = 5:6, bg=colormatrix)
-saveRDS(correct_year, here::here("data", "holdout_year_predictions.rds"))
-myft = structure(list(Name = c("Bob", "Fred", "Joe"), 
-                      `2020-03-30` = c(96, 100, 36),
-                      `2020-04-30` = c(30, 100, 36)), 
-                 row.names = c(NA, -3L), class = c("tbl_df", "tbl", "data.frame"))
-myft %>% 
-  flextable() %>% 
-  bg(j = 2:3, bg=colormatrix)
-myft[,-1] > 50
-ifelse(week_tbl[, c(5)] == week_tbl[, c(4)], "red", "white")
-ifelse(week_tbl[, c(6)] == week_tbl[, c(4)], "red", "white")
-# week_tbl[, c(4, 5, 6)] == 
-colormatrix <- ifelse(myft[, -1] > 50, "red", "white")
-myft %>% 
-  flextable() %>%
-  bg(j = 2:3, bg=colormatrix)
+# saveRDS(correct_year, here::here("data", "holdout_year_predictions.rds"))
 
-myft = structure(list(Name = c("Bob", "Fred", "Joe"), `2020-03-30` = c(96, 
-                                                                       100, 36)), row.names = c(NA, -3L), class = c("tbl_df", "tbl", 
-                                                                                                                    "data.frame"))
-myft = flextable(myft)
-myft
-
-myft = bg(myft, i = ~ `2020-03-30`  > 50, 
-          j = 2,
-          bg="red")
-myft
 # Set custom colors
 green <- "#71CA97"
 red <- "#ff7f7f"

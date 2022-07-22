@@ -1,8 +1,13 @@
 ---
-title: "Title"
-author: "Author"
+title: "Predicting NFL wins using Machine Learning"
+author: "Angus Watters"
 date: "`r format(Sys.Date(), '%B %d, %Y')`"
-output: html_document
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: simplex
+    highlight: tango
 ---
 
 ```{r setup, include = FALSE}
@@ -26,11 +31,12 @@ model_dat <- readRDS(here::here("data", "football_wins_lag_elo.rds"))
 
 # offense    <- readRDS(here::here("data", "offensive.rds"))
 # defense    <- readRDS(here::here("data", "defensive.rds"))
-nfl_train  <- readRDS(here::here("data", "class_train_data.rds"))
-nfl_test   <- readRDS(here::here("data", "class_test_data.rds"))
-wfs_ranks  <- readRDS(here::here("data", "class_wfs_ranks.rds"))
-roc_df         <- readRDS(here::here("data", "win_roc.rds"))
-holdout_result <- readRDS(here::here("data", "holdout_year_predictions.rds"))
+nfl_train       <- readRDS(here::here("data", "class_train_data.rds"))
+nfl_test        <- readRDS(here::here("data", "class_test_data.rds"))
+wfs_ranks       <- readRDS(here::here("data", "class_wfs_ranks.rds"))
+roc_df          <- readRDS(here::here("data", "win_roc.rds"))
+confmat_df      <- readRDS(here::here("data", "win_conf_matrix.rds"))
+holdout_result  <- readRDS(here::here("data", "holdout_year_predictions.rds"))
 
 holdout_df <-
   model_dat %>% 
@@ -45,6 +51,10 @@ holdout_df <-
                 third_down_pct, opp_third_down_pct, 
                 score_drives, opp_score_drives) 
 
+holdout_test <- 
+  model_dat %>% 
+  dplyr::filter(home == 1, game_id %in% nfl_test$game_id) %>%
+  dplyr::select(names(holdout_df)) 
 # Logisitc regression model
 log_reg_model <- readRDS(here::here("data", "win_model_logistic_reg.rds"))
 
@@ -57,12 +67,16 @@ svm_model <- readRDS(here::here("data", "win_model_svm_poly.rds"))
 
 
 # Intro
-My goal with this project was make an attempt at answering the age old sports question of **"So, Who is going to win this game?"** I wanted to see if I could use historic information about a teams offensive and defensive performances to garner an accurate prediction on whether or not they will win there upcoming game. 
+My goal with this project was make an attempt at answering the age old sports question of **"So, Who is going to win this game?"** 
+
+I wanted to see if I could use historic information about a teams offensive and defensive performances to garner an accurate prediction on whether or not they will win there upcoming game. 
 
 # Data Retrieval
 I pulled NFL play-by-play data together using the `nflFastR R package`. I then did some data cleaning and wrangling tasks to get the data into a usable format. 
 
 I started by getting the full play-by-play datasets from 1999-2021. Each year there are some ~50,000 plays run, and for each play, there are 372 columns of data giving information about what happened on that play. 
+
+I created a handful of helper functions that take the `nflFast R` play-by-play data as an input and then aggregates the data to game level data. 
 
 <br>
 
@@ -127,24 +141,19 @@ I created an Elo rating system for each season to create a metric that keeps tra
 
 
 off_table <- tibble::tibble(
-  Variable    = c("Points Scored in quarter 1, 2, 3, 4", 
-                  "Score Differential",
-                  "Average 4th quarter Score Differential",
-                  "Time of Possesion", 
+  Variable    = c("Score Differential",
                   "Third Down Conversion Rate", 
                   "Turnovers",
                   "QB EPA",
                   "Scoring Drive percentage"
                   ),
-  Type        = c("Numeric", "Numeric", "Numeric", "Numeric","Numeric", "Numeric", "Numeric", "Numeric"),
-  Description = c("Total Points scored at the end of each quarter",
-                  "Average Score differential at the end of each quarter of the game",
-                  "Average Score differential throughout the 4th quarter",
-                  "Time of possesion as a percent of both teams possesion time",
+  Type        = c("Numeric", "Numeric","Numeric", "Numeric", "Numeric"),
+  Description = c("Average score differential throughtout the game",
                   "Percent of 3rd downs converted by offense",
                   "Total Turnovers by the offense (Fumbles lost + Interceptions",
                   "Average Quarterback EPA across all plays in the game",
-                  "Percent of Drives that resulted in points" )
+                  "Number of drives that results in a score (touchdown/fieldgoal)"
+                  )
 )
 
 kableExtra::kable(off_table)
@@ -181,21 +190,22 @@ kableExtra::kable(def_table)
 
 ## Off field factors
 
-I included a handful of other information known prior to the game such as if the game is a home game, a division game, the number of days of rest between games, and the team's overall, home, and away winning percentages.
+I included a handful of other information known prior to the game such as if the game is a home game, a division game, the number of days of rest between games, and the team's overall, home, and away winning percentages, and the team's ranking via an Elo rating. 
 
 ```{r, eval = TRUE, echo=FALSE}
 other_fact_table <- tibble::tibble(
   Variable    = c("Home", "Division Game", "Rest days",
-                  "Win %", "Home Win %", "Away Win %"
+                  "Win %", "Home Win %", "Away Win %", "Elo rating"
                   ),
-  Type        = c("Binary", "Binary", "Numeric", "Numeric", "Numeric", "Numeric"),
-"Model Variable" = c("home", "div_game", "rest_days", "win_pct", "home_win_pct", "away_win_pct"),
+  Type        = c("Binary", "Binary", "Numeric", "Numeric", "Numeric", "Numeric", "Numeric"),
+"Model Variable" = c("home", "div_game", "rest_days", "win_pct", "home_win_pct", "away_win_pct", "elo"),
   Description = c("Indicating if the team is the home team (1 = home, 0 = away",
                   "Indicating if it is a division game (1 = division game, 0 = not division game",
                   "Numeric variable for the amount of rest the team had between games",
                   "Percent of all games won",
                   "Percent of home games won",
-                  "Percent of away games won"
+                  "Percent of away games won",
+                  "Elo rating per week in each season, relative to rest of the league"
                   )
 )
 
@@ -206,25 +216,27 @@ kableExtra::kable(other_fact_table)
 Once all of the above variables were wrangled, cleaned, and aggregated from the NFL play-by-play data, I was left with a data frame that had 1 row for every game a team played during the season, with a column for each of the aforementioned derived variables.
 
 ## Corrolation
-Let's take a look at how our offensive variables relate to wins. 
+Let's take a look at how our game summary data relates to wins. 
 
 <br>
 
-Below is a correlation matrix showing the correlation between offensive metrics with the goal of highlighting variables correlated with wins. Darker green colors indicate positive correlations while darker red colors indicate negative correlations. It is not surprising to see that offensive turnovers have a negative correlation with wins. The more often a team turns the ball over, the less likely they are to win the game. The mean scoring differential across the game has a strong positive correlation with wins, which should be the most obvious relationship, whichever team has more points throughout the game, wins more often than not. 
+Below is a correlation matrix that highlights the relationship between variables in our data. We are most interested in the bottom row in this plot which indicates the correlation between a team winning there game and the other variables in our data set. Darker green colors indicate positive correlations while darker red colors indicate negative correlations. 
+
+We see that Elo rating has a relatively strong positive correlation with winning, which makes alot of sense, a higher Elo rating (higher ranked team) is more likely to end up with a win. The average score differential for a team also makes good sense, if a team on average has a higher score differential (they score more points than are scored against them) then it's logical that they would end up winning more games. The turnover variable has a strong negative correlation with winning, so if a team on average has fewer turnovers, they are more likely to end up winning the game. 
 
 <center>
-![](../img/correlation_offense.png)
+![](../img/correlation_home_team.png)
 </center>
 
 <br>
 
-At this point in my analysis, I was working with *a posteriori* data, so data that was collected as a product of what happened on the field that week. If I want to make any useful predictions as to the following week wins, I would need to conjur up some *a priori* data.
+At this point in my analysis, I was working with ***a posteriori*** data, so data that was collected as a product of what happened on the field that week. If I want to make any useful predictions about the coming week, I would need to conjur up some ***a priori*** data.
 
 ## Cumulative Averages
 
-To capture how well a team is doing throughout each season, I created lagged cumulative means for all of the above variables. Such that, for each week a team plays a game, the cumulative mean of all the preceeding weeks of data are calculated for every variable leading into the upcoming slate of games.
+To capture how well a team is doing throughout each season, I created lagged cumulative means for all of the above variables. Such that, for each week a team plays a game, the cumulative mean of all the *preceding* weeks of data are calculated for every variable leading into the upcoming slate of games.
 
-Below is the general method I used to get these lagged Cumulative averages values. Note, for some variables like winning percentage, the lagged cumalative averages was *not* calculated and rather only the lagged value was determined. In the example code below, the lagged winning percentage, and the lagged cumaltive average QB EPA is calculated for the Arizona Cardinals 2014 season. 
+Below is the general method I used to get these lagged Cumulative averages values. Note, for some variables like winning percentage, the lagged cumulative averages was *not* calculated and rather only the lagged value was determined. In the example code below, the lagged winning percentage, and the lagged cumulative average QB EPA is calculated for the Arizona Cardinals 2014 season. 
 
 ```{r, eval = TRUE, echo = TRUE}
 nfl %>% 
@@ -234,7 +246,7 @@ nfl %>%
   dplyr::arrange(season, week, .by_group = T) %>% 
   dplyr::mutate(
     across(c(win_pct), ~dplyr::lag(.x), .names = "{col}_lag"),
-    across(c(qb_epa), ~dplyr::lag(dplyr::cummean(.x)), .names = "{col}_lag")
+    across(c(qb_epa),  ~dplyr::lag(dplyr::cummean(.x)), .names = "{col}_lag")
     ) %>% 
   dplyr::mutate(across(c(win_pct:qb_epa_lag), round, 2)) %>% 
   dplyr::ungroup() %>% 
@@ -242,12 +254,15 @@ nfl %>%
 
 ```
 
-
-So for a week 5 match up, the cumulative mean of all variables is calculated from weeks 1-4.  So for each row with a game outcome (win/loss), that team has variables representing their performances in the preceding weeks. 
+If you take a look at ARI's week 5 game (row 5), the **win_pct_lag** column for week 5 is represented by the teams **win_pct** from the previous week, week 4 in this case, or in other words, the team's winning percentage *leading into* the week 5 match up. On the other hand, the  **qb_epa_lag** column was calculated using the mean of **qb_epa** from weeks 1-4. 
 
 <br>
 
-Now our data is set up so that all the information used to inform our prediction is data that would be available to us prior to the upcoming week of games. This is important because information such as the number of turnovers during the game is not information we would have prior to the game, and thus can't be used as a predictor in our model, we can only use historic data to inform our predictions. 
+I did this lagging process across all of my variables such that for each row with a game outcome (win/loss), that team has variables representing their performances up until that point in the season.
+
+<br>
+
+Now our data is set up so that all the information used to inform our prediction is data that would be available to us ***prior*** to the upcoming week of games. This is important because information such as the number of turnovers during the game is not information we would have prior to the game, and thus can't be used as a predictor in our model, we can only use historic data to inform our predictions. 
 
 ## Home team
 
@@ -255,15 +270,14 @@ Initially I had been running models with 2 data points for each game, one being 
 
 
 # Modeling
-I decided I wanted to run my data across a suite of 7 different models and see how they all perform against each other 
+I decided I wanted to run my data across a panel of 6 different models and see how they all perform against each other 
 
-  - Logistic Regression
-  - KKN nearest neighbors
-  - XGBoost 
-  - Multiadaptive regression splines (MARS)
-  - MLP Neural Net
-  - SVM Robust
-  - SVM Poly
+  - [Logistic Regression](https://parsnip.tidymodels.org/reference/details_logistic_reg_glmnet.html)
+  - [K-nearest neighbors](https://parsnip.tidymodels.org/reference/details_nearest_neighbor_kknn.html)
+  - [Gradient Boosted Decision Trees](https://parsnip.tidymodels.org/reference/details_boost_tree_xgboost.html)
+  - [Multilayer Perceptron](https://parsnip.tidymodels.org/reference/details_mlp_nnet.html)
+  - [Radial basis function Support Vector Machines](https://parsnip.tidymodels.org/reference/details_svm_rbf_kernlab.html)
+  - [Polynomial Support Vector Machines](https://parsnip.tidymodels.org/reference/details_svm_poly_kernlab.html)
 
 ## Data Budget/Splits
 The first step was to split up our data into testing and training splits (75% training, 25% testing). When I split my data, I chose to stratify the data by the binary win/loss value to ensure there was the same proportion of wins and losses in our training and testing data splits. 
@@ -468,7 +482,7 @@ Below is the variable importance scores for the Logisitc Regression model. The m
 ![](../img/vip_boost_tree.png)
 </center>
 
--## ROC Curves
+## ROC Curves
 Receiver Operator Characteristic curves, (aka ROC curves) are a way of understanding how well a model is at predicting the True Positive events vs False Positive events. In this scenario a True Positive event is the model predicts a win and the team wins, while a False Positive event is the model predicts a win, and the team losses. The True Positive Rate (TPR) is on the Y axis and the False Positive Rate (FPR) is on the X axis. The TPR, or sensitivity, along the Y axis indicates the probability that the model predicted a win and the team actually won. While FPR or, 1 - specificity, along the X axis indicates the probability that the model predicted a win and the team actually lost. 
 
 The closer the ROC curve is to the top left corner of the plot the better the model is doing at correctly classifying the data. A perfect ROC Curve would be a 90 degree angle along the top left corner of the plot.
@@ -476,15 +490,24 @@ The closer the ROC curve is to the top left corner of the plot the better the mo
 
 ```{r, eval = TRUE, echo=FALSE}
 roc_df %>%
-  ggplot() +
-  geom_line(aes(x = 1 - specificity, y = sensitivity, color = model), alpha = 0.6, size = 1) +
-  scale_color_manual(values = RColorBrewer::brewer.pal(6, "Dark2")) +
-  geom_abline(lty = 2, color = "gray80", size = 1.5)  +
-  # geom_path(show.legend = T, alpha = 0.6, size = 1.2) +
-  coord_equal() +
-  labs(
+  ggplot2::ggplot() +
+  ggplot2::geom_line(
+    ggplot2::aes(
+      x     = 1 - specificity, 
+      y     = sensitivity,
+      color = model), 
+    alpha = 0.6, 
+    size  = 1
+    ) +
+  ggplot2::scale_color_manual(values = RColorBrewer::brewer.pal(6, "Dark2")) +
+  ggplot2::geom_abline(
+    lty   = 2, 
+    color = "gray80", 
+    size  = 1.5)  +
+  ggplot2::coord_equal() +
+  ggplot2::labs(
       title    = "ROC Curves",
-      # subtitle = "Resample results from 10 Fold Cross Validation",
+      subtitle = "Test data",
       x        = "False Positive Rate (1 - Specificity)",
       y        = "True Positive Rate (Sensitivity)"
     ) + 
@@ -493,43 +516,279 @@ roc_df %>%
 ```
 
 
+## Confusion Matrix
+A confusion matrix is a helpful way of understanding where a classifcation model is correct or incorrect in it's predictions. At first glance, I thought the name confusion matrix came from the fact that *I was confused*. Turns out the name has more meaning, its purpose is to highlight *where a classification model is confused in its predictions*...not when the modeler is confused...
+
+<br>
+
+So, if this is your first time seeing a confusion matrix this illustration might help.  Insert hot dog confusion matrix image
+```{r, eval = TRUE, echo=FALSE}
+# confusion matrix
+# cm_df <-
+  holdout_test %>%
+  dplyr::select(win, fav) %>% 
+  yardstick::conf_mat(truth = win, fav) %>% 
+  .$table %>% 
+  as.data.frame() %>%
+  dplyr::mutate(
+    goodbad = ifelse(Prediction == Truth, "good", "bad"),
+    prop    = Freq/sum(Freq),
+    Prediction = dplyr::case_when(
+    Prediction == 1 ~ "Model Predicts win",
+    Prediction == 0 ~ "Model Predicts loss"
+    ),
+    Truth = dplyr::case_when(
+      Truth == 1 ~ "Actual win",
+      Truth == 0 ~ "Actual loss"
+      ),
+    model = "vegas"
+    ) %>% 
+    dplyr::bind_rows(confmat_df) %>% 
+    dplyr::filter(model %in% c("vegas", "logistic_reg", "svm_poly", "boost_tree")) %>%  
+    dplyr::mutate(
+      model = dplyr::case_when(
+        model == "logistic_reg" ~ "Logisitc Reg.",
+        model == "svm_poly"     ~ "SVM",
+        model == "boost_tree"   ~ "XGBoost",
+        model == "vegas"        ~ "Vegas"
+        ),
+      Prediction = gsub("Model ", "", Prediction),
+      Prediction = factor(Prediction, levels = c("Predicts win", "Predicts loss")),
+      model      = factor(model, levels = c("Vegas", "Logisitc Reg.", "SVM", "XGBoost"))
+    # Truth = factor(Truth, levels = c("Actual win", "Actual loss"))
+  ) %>% 
+  dplyr::mutate(
+    cm = dplyr::case_when(
+      Prediction == "Predicts win" & Truth == "Actual win" ~ "TP",
+      Prediction == "Predicts loss" & Truth == "Actual loss" ~ "TN",
+      Prediction == "Predicts win" & Truth == "Actual loss" ~ "FN",
+      Prediction == "Predicts loss" & Truth == "Actual win" ~ "FP"
+    ),
+     Freq_txt = paste0(cm, " = ", Freq)
+    # Freq_txt = paste0(Freq, "\n(", cm, ")")
+  ) %>% 
+  ggplot2::ggplot(ggplot2::aes(
+    x = Prediction,
+    y = Truth,
+    fill = goodbad)) +
+  ggplot2::geom_tile(ggplot2::aes(alpha = prop)) +
+  # ggplot2::facet_wrap(~model) +
+  # ggplot2::facet_grid(model~.) +
+  ggplot2::facet_grid(~model) +
+  ggplot2::scale_fill_manual(values = c(good = "#71CD5F", bad = "red")) + 
+  ggplot2::geom_text(ggplot2::aes(
+    label = sprintf("%1.0f", Freq)
+    # label = Freq_txt
+    ),
+    vjust = 1) +
+  ggplot2::labs(
+    title    = "Confusion matrix",
+    subtitle = "Test data split",
+    x        = "Prediction",
+    y        = "Truth"
+    ) +
+  apatheme +
+  ggplot2::theme(
+    legend.position  = "none",
+    axis.title       = ggplot2::element_text(size = 12),
+    axis.text.y      = ggplot2::element_text(size = 10),
+    axis.text.x      = ggplot2::element_text(size = 10, angle = 0)
+      )
+```
+
+<br>
+
+**A few notes from looking at this confusion matrix:**
+- All three of my models do a better job of correctly predicting losses in the test data than Las Vegas did in the same games 
+- The Support Vector Machine has more total correct predictions than both other models
+- The SVM Model predict wins better than the Logistic Reg. and XGBoost models.
+- The Logistic Reg. Model predicts losses better than the SVM and XGBoost models
+- ~35% of correct predictions are losses, the remaining ~65% are correctly predicted wins (~43% of the test data were actual losses so this isn't ***too*** far off)
+- For this data/domain, having the model predict more wins than losses makes logical sense, **the home team tends to win more often than they lose**
+- In general, the models have the most trouble classifying FP 
+
+
+```{r}
+confmat_tbl <- 
+  confmat_df %>%
+  dplyr::filter(model %in% c("logistic_reg", "svm_poly", "boost_tree")) %>%
+  dplyr::mutate(
+    model = dplyr::case_when(
+      model == "logistic_reg" ~ "Logisitc Reg.",
+      model == "svm_poly"     ~ "SVM",
+      model == "boost_tree"   ~ "XGBoost"
+    ),
+    Prediction = gsub("Model ", "", Prediction),
+    Prediction = factor(Prediction, levels = c("Predicts win", "Predicts loss"))
+    # Truth = factor(Truth, levels = c("Actual win", "Actual loss"))
+  ) %>% 
+  dplyr::mutate(
+    cm = dplyr::case_when(
+      Prediction == "Predicts win" & Truth == "Actual win" ~ "TP",
+      Prediction == "Predicts loss" & Truth == "Actual loss" ~ "TN",
+      Prediction == "Predicts win" & Truth == "Actual loss" ~ "FN",
+      Prediction == "Predicts loss" & Truth == "Actual win" ~ "FP"
+    ),
+     Freq_txt = paste0(cm, " = ", Freq)
+  ) %>% 
+  tidyr::pivot_wider(
+    id_cols     = c(model),
+    names_from  = cm, 
+    values_from = Freq
+    ) %>% 
+  dplyr::mutate(
+    Accuracy          = round((TP + TN) / (TP + TN + FP + FN), 2),
+    Misclassification = round((FP + FN) / (TP + TN + FP + FN), 2),
+    Precision         = round((TP) / (TP + FP), 2),
+    Sensitivity       = round((TP) / (TP + FN), 2),
+    Specificity       = round((TN) / (TN + FP), 2)
+    # f1_score          = round(2*((Precision * Sensitivity) / (Precision + Sensitivity)), 2)
+  ) %>%
+  dplyr::rename("Model" = "model") %>% 
+  dplyr::select(-TP, -FP, -FN, -TN) %>% 
+  dplyr::arrange(Model)
+
+confmat_tbl %>%
+  flextable::flextable() %>% 
+  flextable::add_header_row(
+    values    = c("", "Metrics"),
+    colwidths = c(1, 5)
+    ) %>%
+  flextable::theme_box() %>% 
+  flextable::align(align = "center", part = "all")
+
+```
+
+Looking at the SVM model in the table above, we see a **sensitivity** of ~0.72, which means the SVM model *correctly predicted the home team to win 72% of the time. The **specificity* of 0.70 indicates that *70% of home team losses were correctly predicted*. Amongst the three models, the SVM model looks to do the best at correctly identifying wins and losses for the home team. 
+
 ## Predict
 
+## Past season test Predictions
+```{r, eval = TRUE, echo=FALSE}
+# Predict on 2021 season, data held out from model
+pred_season <-
+  holdout_test %>% 
+  dplyr::bind_cols(setNames(stats::predict(log_reg_model, holdout_test), "log_reg_pred")) %>%
+
+  dplyr::bind_cols(setNames(stats::predict(svm_model, holdout_test), "svm_pred")) %>%
+  dplyr::bind_cols(setNames(stats::predict(xgb_model, holdout_test), "xgb_pred")) %>%
+  dplyr::bind_cols(setNames(stats::predict(log_reg_model, holdout_test, type = "prob"),
+                           c("log_reg_prob_1", "log_reg_prob_0"))) %>%
+  dplyr::bind_cols(setNames(stats::predict(svm_model, holdout_test, type = "prob"),
+                           c("svm_prob_1", "svm_prob_0"))) %>%
+  dplyr::bind_cols(setNames(stats::predict(xgb_model, holdout_test, type = "prob"),
+                           c("xgb_prob_1", "xgb_prob_0"))) %>%
+  dplyr::select(season, week, team, opponent, fav, win,
+                log_reg_pred, svm_pred, xgb_pred,
+                log_reg_prob_1, svm_prob_1 , xgb_prob_1) %>% 
+  dplyr::mutate(across(where(is.numeric), round, 3)) %>% 
+  dplyr::mutate(
+      vegas_pct = dplyr::case_when(
+        win == fav ~ 1,
+        win != fav ~ 0
+      ),
+      log_reg_pct = dplyr::case_when(
+        win == log_reg_pred ~ 1,
+        win != log_reg_pred ~ 0
+      ),
+      svm_pct = dplyr::case_when(
+        win == svm_pred ~ 1,
+        win != svm_pred ~ 0
+      ),
+      xgb_pct = dplyr::case_when(
+        win == xgb_pred ~ 1,
+        win != xgb_pred ~ 0
+      )
+    ) %>%
+  dplyr::group_by(season) %>% 
+  dplyr::summarize(
+    across(c(vegas_pct:xgb_pct), sum, na.rm = T),
+    games = n()
+    ) %>% 
+  dplyr::mutate(
+    vegas_pct   = vegas_pct/games,
+    log_reg_pct = log_reg_pct/games,
+    svm_pct     = svm_pct/games,
+    xgb_pct     = xgb_pct/games
+  ) %>% 
+  round(2) %>% 
+  dplyr::select(-games)
+
+pred_season %>% 
+  setNames(c("season", "Vegas", "Logistic Reg.", "SVM", "XGBoost")) %>% 
+   tidyr::pivot_longer(c("Logistic Reg.":"XGBoost")) %>% 
+  # tidyr::pivot_longer(c("Vegas":"XGBoost")) %>% 
+  # dplyr::mutate(
+  #   name = factor(name, levels = c(
+  #     "Vegas", "Logistic Reg.", 
+  #     "SVM",  "XGBoost"))
+  #   ) %>%
+  ggplot2::ggplot() +
+     #  ggplot2::geom_point(ggplot2::aes(x = season, y = value, col = name), size = 2) + 
+     # ggplot2::geom_line(ggplot2::aes(x = season, y = Vegas), col = "black", size = 1) 
+   # geom_line(aes(x = week, y = value, col = name, alpha = name, size = name)) +
+    ggplot2::geom_line(ggplot2::aes(x = season, y = value, col = name, alpha = name, size = name)) +
+  ggplot2::scale_color_manual(values = c( "black", "red3", "forestgreen", "dodgerblue2")) +
+  scale_size_manual(values = c(2, 1.2, 1.2, 1.2)) +
+    # ggplot2::scale_size_manual(values = c(5, 3, 3, 3)) +
+  ggplot2::scale_alpha_manual(values = c(0.8, 0.8, 0.8, 0.8))  +
+  ggplot2::scale_x_continuous(breaks = seq(1999, 2021, 1))  +
+  ggplot2::scale_y_continuous(limits = c(0, 1),
+    labels = function(x) paste0(x*100, "%")) +
+  ggplot2::labs(
+      title    = "Picking Game winners (Test data)",
+      subtitle = "Model predictions vs. Vegas favorites",
+      x = "Season",
+      y = "% of correct predictions"
+    ) + 
+    apatheme +
+    ggplot2::theme(
+      legend.position     = "bottom",
+      axis.text.x         = ggplot2::element_text(angle = -45), 
+      panel.grid.minor.x  = ggplot2::element_blank()
+    )
+  # ggplot() +
+  # ggplot2::geom_point(aes(x = season, y = value, col = name))
+```
 ## 2021 Predictions
 
 I completely held out the 2021 season's games so that I could then apply my fitted models to the data and see how the predictions fare against Vegas' predicted winners.
 
 ```{r, eval = TRUE, echo=FALSE}
 # Color code TP and TN as green and FP and FN as red
-colormatrix  <- ifelse(holdout_result[, c(5, 6)] == holdout_result[, c(4, 4)], "#85E088", "indianred2")
-
-holdout_result %>% 
-  flextable::flextable() %>% 
-  flextable::bg(j = 5:6, bg = colormatrix)
+# colormatrix  <- ifelse(holdout_result[, c(5, 6)] == holdout_result[, c(4, 4)], "#85E088", "indianred2")
+# 
+# holdout_result %>% 
+#   flextable::flextable() %>% 
+#   flextable::bg(j = 5:6, bg = colormatrix) %>% 
+#   flextable::align(align = "center", part = "all")
 ```
 
 
 ```{r, eval = TRUE, echo=FALSE}
-# augment(svm_model, holdout_df)
+# Predict on 2021 season, data held out from model
 pred_holdout <-
-  log_reg_model %>% 
-  augment(holdout_df) %>% 
-  dplyr::select(season, week, game_id, team, opponent, win, fav,
-                log_reg_pred = .pred_class, 
-                log_reg_prob_1 = .pred_1, 
-                log_reg_prob_0 = .pred_0
-                ) %>% 
-      bind_cols(predict(svm_model, holdout_df)) %>% 
-      # bind_cols(predict(svm_model, holdout_df, type = "prob")) %>% 
-  dplyr::rename(
-    svm_pred   = .pred_class
-    # svm_prob_1 = .pred_1, 
-    # svm_prob_0 = .pred_0
-    ) %>% 
-  bind_cols(predict(xgb_model, holdout_df)) %>% 
-  dplyr::rename(
-    xgb_pred   = .pred_class
-    ) %>% 
+  holdout_df %>% 
+  dplyr::bind_cols(setNames(stats::predict(log_reg_model, holdout_df), "log_reg_pred")) %>%
+
+  dplyr::bind_cols(setNames(stats::predict(svm_model, holdout_df), "svm_pred")) %>%
+  dplyr::bind_cols(setNames(stats::predict(xgb_model, holdout_df), "xgb_pred")) %>%
+  dplyr::bind_cols(setNames(stats::predict(log_reg_model, holdout_df, type = "prob"),
+                           c("log_reg_prob_1", "log_reg_prob_0"))) %>%
+  dplyr::bind_cols(setNames(stats::predict(svm_model, holdout_df, type = "prob"),
+                           c("svm_prob_1", "svm_prob_0"))) %>%
+  dplyr::bind_cols(setNames(stats::predict(xgb_model, holdout_df, type = "prob"),
+                           c("xgb_prob_1", "xgb_prob_0"))) %>%
+  dplyr::select(season, week, team, opponent, fav, win,
+                log_reg_pred, svm_pred, xgb_pred,
+                log_reg_prob_1, svm_prob_1 , xgb_prob_1) %>% 
+  dplyr::mutate(across(where(is.numeric), round, 3))
+```
+
+```{r, eval = TRUE, echo=FALSE}
+# Clean data for table, set colors 
+pred_table <- 
+  pred_holdout %>% 
   dplyr::mutate(
     actual_outcome = dplyr::case_when(
       win == 1 ~ "win",
@@ -550,28 +809,207 @@ pred_holdout <-
     xgb_pred = dplyr::case_when(
       xgb_pred == 1 ~ "win",
       xgb_pred == 0 ~ "loss"
-    ),
-    # log_reg_prob_1 = round(log_reg_prob_1, 2),
-    #     svm_prob_1 = round(svm_prob_1, 2)
-  ) %>% 
+      )
+    ) %>% 
   dplyr::arrange(week) %>% 
-  # dplyr::select(week, home_team = team, away_team = opponent, actual_outcome, vegas_pred, model_pred, pred_prob, vegas_colors, model_colors)
-# %>%
   dplyr::select(week, home_team = team, away_team = opponent, actual_outcome, vegas_pred,
                 log_reg_pred,
                 svm_pred,
                 xgb_pred
-                # log_reg_prob_1, svm_prob_1
                 )
 
 # Color code TP and TN as green and FP and FN as red
-colormatrix  <- ifelse(pred_holdout[, c(5, 6, 7, 8)] == pred_holdout[, c(4, 4, 4, 4)], "#85E088", "indianred2")
-
-pred_holdout %>% 
-  flextable::flextable() %>% 
-  flextable::bg(j = c(5:8), bg = colormatrix)
+colormatrix  <- ifelse(pred_table[, c(5, 6, 7, 8)] == pred_table[, c(4, 4, 4, 4)], "#85E088", "indianred2")
 ```
 
+## Full win/loss table
+```{r, eval = TRUE, echo=FALSE}
+# Flextable with color coding
+pred_table %>% 
+  flextable::flextable() %>% 
+  flextable::bg(j = c(5:8), bg = colormatrix) %>% 
+  flextable::add_header_row(
+    values    = c(" ", "Vegas", "Models"), 
+    colwidths = c(4, 1, 3)
+    ) %>% 
+  flextable::theme_box() %>% 
+  flextable::align(align = "center", part = "all")
+```
+
+
+```{r, eval = TRUE, echo=FALSE}
+
+# # Predict on 2021 season, data held out from model
+# pred_holdout <-
+#   holdout_df %>% 
+#   dplyr::bind_cols(setNames(stats::predict(log_reg_model, holdout_df), "log_reg_pred")) %>%
+# 
+#   dplyr::bind_cols(setNames(stats::predict(svm_model, holdout_df), "svm_pred")) %>%
+#   dplyr::bind_cols(setNames(stats::predict(xgb_model, holdout_df), "xgb_pred")) %>%
+#   dplyr::bind_cols(setNames(stats::predict(log_reg_model, holdout_df, type = "prob"),
+#                            c("log_reg_prob_1", "log_reg_prob_0"))) %>%
+#   dplyr::bind_cols(setNames(stats::predict(svm_model, holdout_df, type = "prob"),
+#                            c("svm_prob_1", "svm_prob_0"))) %>%
+#   dplyr::bind_cols(setNames(stats::predict(xgb_model, holdout_df, type = "prob"),
+#                            c("xgb_prob_1", "xgb_prob_0"))) %>%
+#   dplyr::select(season, week, team, opponent, fav, win,
+#                 log_reg_pred, svm_pred, xgb_pred,
+#                 log_reg_prob_1, svm_prob_1 , xgb_prob_1) %>% 
+#   dplyr::mutate(across(where(is.numeric), round, 3))
+# 
+# # 1 if vegas/model was correct, 0 if incorrect
+correct_picks <-
+  pred_holdout %>%
+  dplyr::arrange(week) %>%
+  dplyr::mutate(
+      vegas_pct = dplyr::case_when(
+        win == fav ~ 1,
+        win != fav ~ 0
+      ),
+      log_reg_pct = dplyr::case_when(
+        win == log_reg_pred ~ 1,
+        win != log_reg_pred ~ 0
+      ),
+      svm_pct = dplyr::case_when(
+        win == svm_pred ~ 1,
+        win != svm_pred ~ 0
+      ),
+      xgb_pct = dplyr::case_when(
+        win == xgb_pred ~ 1,
+        win != xgb_pred ~ 0
+      )
+    ) %>%
+  dplyr::group_by(week) %>%
+  dplyr::summarize(
+    across(c(vegas_pct:xgb_pct), sum, na.rm = T),
+    games       = n()
+    ) %>%
+  dplyr::mutate(
+    vegas_pct    = vegas_pct/games,
+    log_reg_pct  = log_reg_pct/games,
+    svm_pct      = svm_pct/games,
+    xgb_pct      = xgb_pct/games
+  ) %>%
+  round(2) %>%
+  dplyr::select(-games)
+
+# % of correct picks by week
+correct_picks %>% 
+  dplyr::filter(week <= 21) %>%
+  setNames(c("week", "Vegas", "Logistic Reg.", "SVM", "XGBoost")) %>% 
+   tidyr::pivot_longer(c("Vegas":"XGBoost")) %>%
+  dplyr::mutate(
+    name = factor(name, levels = c(
+      "Vegas", "Logistic Reg.", 
+      "SVM",  "XGBoost"))
+    ) %>%
+  # tidyr::pivot_longer(c(vegas_pct:xgb_pct)) %>% 
+  # dplyr::mutate(name = factor(name, levels = c("vegas_pct", "log_reg_pct", "svm_pct", "xgb_pct"))) %>%
+  ggplot() +
+  # geom_line(aes(x = week, y = value, col = name, alpha = name, size = name)) +
+    geom_point(aes(x = week, y = value, col = name, alpha = name, size = name)) +
+  scale_color_manual(values = c( "black", "red3", "forestgreen", "dodgerblue2")) +
+  # scale_size_manual(values = c(2, 1.2, 1.2, 1.2)) +
+    scale_size_manual(values = c(5, 3, 3, 3)) +
+  scale_alpha_manual(values = c(0.8, 0.8, 0.8, 0.8)) +
+  scale_x_continuous(breaks = seq(2, 22, 1)) +
+  scale_y_continuous(limits = c(0, 1),
+    labels = function(x) paste0(x*100, "%")) +
+  labs(
+      title    = "Picking Game winners (2021)",
+      subtitle = "Model predictions vs. Vegas favorites",
+      x = "Week",
+      y = "% of correct predictions"
+    ) + 
+    apatheme +
+    theme(
+      legend.position    = "bottom",
+      panel.grid.minor.x = element_blank() ,
+    )
+```
+
+## Good Prediction Week
+```{r}
+# A week with more preditions correct than Las Vegas
+good_week <- 
+  pred_table %>% 
+  dplyr::filter(week == 12)
+
+# Color code TP and TN as green and FP and FN as red
+good_week_color <- ifelse(good_week[, c(5, 6, 7, 8)] == good_week[, c(4, 4, 4, 4)], "#85E088", "indianred2")
+
+# Flextable with color coding
+good_week %>% 
+  flextable::flextable() %>% 
+  flextable::bg(j = c(5:8), bg = good_week_color) %>% 
+  flextable::add_header_row(
+    values    = c(" ", "Vegas", "Models"), # values = c(" ","Vegas Predictions", "Model Predictions"),
+    colwidths = c(4, 1, 3)
+    # values    = c(" ", "Vegas / Model Predictions"), colwidths = c(4, 4)
+    ) %>% 
+  flextable::theme_box() %>% 
+  flextable::align(align = "center", part = "all")
+```
+
+
+## Bad Prediction Week
+```{r}
+# A week with more preditions correct than Las Vegas
+bad_week <- 
+  pred_table %>% 
+  dplyr::filter(week == 15)
+
+# Color code TP and TN as green and FP and FN as red
+bad_week_color <- ifelse(bad_week[, c(5, 6, 7, 8)] == bad_week[, c(4, 4, 4, 4)], "#85E088", "indianred2")
+
+# Flextable with color coding
+bad_week %>% 
+  flextable::flextable() %>% 
+  flextable::bg(j = c(5:8), bg = bad_week_color) %>% 
+  flextable::add_header_row(
+    values    = c(" ", "Vegas", "Models"), 
+    colwidths = c(4, 1, 3)
+    ) %>% 
+  flextable::theme_box() %>% 
+  flextable::align(align = "center", part = "all")
+```
+
+```{r, eval = TRUE, echo=FALSE}
+correct_picks %>% 
+  dplyr::filter(week <= 21) %>%
+  dplyr::mutate(
+    log_reg_diff = log_reg_pct - vegas_pct, 
+    svm_diff     = svm_pct - vegas_pct, 
+    xgb_diff     = xgb_pct - vegas_pct  
+  ) %>% 
+  dplyr::select(week, log_reg_diff, svm_diff, xgb_diff) %>% 
+  tidyr::pivot_longer(c(-week)) %>% 
+  ggplot() +
+  geom_hline(yintercept = 0, size = 1.5, linetype = "dashed", col = "black", alpha = 0.7) +
+  # geom_line(aes(x = week, y = value, col = name), size = 1.2) +
+    geom_point(aes(x = week, y = value, col = name), size = 4) +
+  scale_color_manual(values = c( "red3", "forestgreen", "dodgerblue2")) +
+  # scale_y_continuous(limits = c(-0.3, 0.3)) +
+  scale_y_continuous(
+    # limits = c(0, 1),
+    limits = c(-0.3, 0.3), 
+    breaks = seq(-0.25, 0.25, 0.1),
+    labels = function(x) paste0(x*100, "%")) +
+  scale_x_continuous(breaks = seq(2, 22, 1)) +
+  labs(
+      title    = "Difference in % of games correctly predicted",
+      subtitle = "Positive  % =  Higher % of correct picks by model\nNegative % =  Lower % of correct picks by model",
+      # subtitle = "Difference in % of correct predictions Model predictions vs. Vegas predictions",
+      x = "Week",
+      y = "% of correct predictions"
+    ) + 
+    apatheme +
+    theme(
+      legend.position    = "bottom",
+      panel.grid.minor.x = element_blank() ,
+    )
+
+```
 
 
 

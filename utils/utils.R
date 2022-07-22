@@ -151,6 +151,137 @@ is_nan_data_frame <- function(x) {
 mean_na <- function(x) {
   ifelse(is.na(x), mean(x, na.rm = TRUE), x)
 }
+
+get_offense2 <- function(season_pbp) {
+
+  logger::log_info("\n\nCalculating {season_pbp$season[1]} offensive stats...")
+  
+  # Remove overtime, calculate drive time of possession, identify home teams
+  season_df <-
+    season_pbp %>%
+    dplyr::group_by(game_id, posteam) %>%
+    dplyr::ungroup() %>% 
+    dplyr::group_by(game_id, qtr, posteam) %>% 
+    dplyr::arrange(-game_seconds_remaining, .by_group = T) %>% 
+    dplyr::mutate(
+      drive_time_of_possession_sec =  
+        60*as.numeric(sub(':.*', '', drive_time_of_possession)) + as.numeric(sub('.*:', '', drive_time_of_possession))
+    ) %>% 
+    dplyr::mutate(
+      home = dplyr::case_when(
+        posteam == home_team ~ 1,
+        TRUE                 ~ 0
+      )
+    ) %>% 
+    dplyr::ungroup() %>% 
+    dplyr::filter(qtr < 5)  %>% 
+    dplyr::filter(!posteam == "")
+  
+  # total scoring drives and % of drives ending with a score
+  off_drive_stats <-
+    season_df %>%
+    dplyr::group_by(game_id, qtr, posteam, drive) %>%
+    dplyr::summarize(
+      drive_ended_with_score  = max(drive_ended_with_score,na.rm = F)
+    ) %>%
+    dplyr::ungroup() %>% 
+    dplyr::group_by(game_id, drive, posteam) %>% 
+    dplyr::slice(1) %>% 
+    dplyr::ungroup() %>% 
+    dplyr::group_by(game_id, posteam) %>% 
+    dplyr::mutate(ndrives = n()) %>% 
+    dplyr::summarize(
+      ndrives          = mean(ndrives, na.rm = T),
+      score_drives     = sum(drive_ended_with_score, na.rm = T),
+      score_drives_pct = score_drives/ndrives
+    ) %>%
+    na.omit() %>% 
+    dplyr::ungroup() %>% 
+    dplyr::select(-ndrives)
+  
+  # Offensive quarter stats, turnovers, third down conversions, QB EPA
+  off_stats <- 
+    season_df %>% 
+    dplyr::group_by(game_id, posteam) %>%
+    dplyr::summarize(
+      across(c(fumble_lost, interception, third_down_converted, third_down_failed), sum, na.rm = T),
+      across(c(qb_epa), mean, na.rm = T),
+      across(c(home, div_game), max, na.rm = F)
+    ) %>%
+    dplyr::mutate(
+      third_down_pct = third_down_converted/(third_down_converted + third_down_failed),
+      turnovers      = fumble_lost + interception
+    ) %>% 
+    dplyr::ungroup() %>% 
+    dplyr::select(-third_down_converted, -third_down_failed, -fumble_lost, -interception) %>%
+    dplyr::filter(!is.na(posteam)) %>% 
+    dplyr::relocate(game_id, posteam, home, div_game, third_down_pct, turnovers)
+  
+  # Quarter score differential of possession
+  off_qtr_points <- 
+    season_df %>% 
+    dplyr::select(game_id, qtr, drive, play_id, game_seconds_remaining, 
+                posteam, posteam_score_post) %>% 
+    dplyr::group_by(game_id, qtr, posteam) %>%
+    # dplyr::filter(game_id == "2021_01_ARI_TEN") %>%
+    dplyr::arrange(drive, .by_group = T) %>% 
+    dplyr::slice(
+      which.min(play_id),
+      which.max(play_id)
+    ) %>% 
+    na.omit() %>%
+    dplyr::mutate(
+      start_end = dplyr::case_when(
+        play_id == min(play_id) ~ "start_qtr",
+        play_id == max(play_id) ~ "end_qtr"
+      )
+    ) %>% 
+    dplyr::ungroup() %>%
+    tidyr::pivot_wider(
+      id_cols     = c(game_id, qtr, posteam), 
+      names_from  = "start_end", 
+      values_from = "posteam_score_post"
+    ) %>% 
+    dplyr::mutate(
+      qtr_pts = end_qtr - start_qtr
+    ) %>% 
+    dplyr::select(game_id, qtr, posteam, qtr_pts) %>% 
+    dplyr::ungroup() %>% 
+    dplyr::mutate(qtr_name = paste0("qtr_", qtr)) %>%
+    tidyr::pivot_longer(cols = c(qtr_pts)) %>%
+    tidyr::pivot_wider(
+      id_cols     = c(game_id, posteam),
+      names_from  = c(name, qtr),
+      names_glue = "{name}_{qtr}",
+      values_from = value
+    ) %>% 
+    dplyr::mutate(
+      pts_scored = qtr_pts_1 + qtr_pts_2 + qtr_pts_3 + qtr_pts_4
+    )
+  
+  # Join all data 
+  off_game <-
+    off_stats %>% 
+    dplyr::ungroup() %>% 
+    dplyr::left_join(
+      off_drive_stats,
+      by = c("game_id", "posteam")
+    ) %>% 
+    dplyr::left_join(
+      off_qtr_points,
+      by = c("game_id", "posteam")
+    )  %>% 
+    dplyr::mutate(
+      season = as.numeric(substr(game_id, 1, 4)),
+      week   = as.numeric(substr(game_id, 6, 7))
+    ) %>% 
+    dplyr::relocate(season, week, game_id, posteam, home, div_game) %>% 
+    dplyr::filter(posteam != "") %>% 
+    dplyr::mutate(across(where(is.numeric), round, 3))
+  
+  return(off_game)
+
+}
 # Function takes in Play by play dataset from nflfastR::load_pbp() and tidys --> adds win percentage
 get_offense <- function(season_pbp) {
   # season_pbp <- pbp_stats[[20]]
