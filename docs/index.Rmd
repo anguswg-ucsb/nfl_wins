@@ -35,6 +35,7 @@ nfl_train       <- readRDS(here::here("data", "class_train_data.rds"))
 nfl_test        <- readRDS(here::here("data", "class_test_data.rds"))
 wfs_ranks       <- readRDS(here::here("data", "class_wfs_ranks.rds"))
 roc_df          <- readRDS(here::here("data", "win_roc.rds"))
+vip_df          <- readRDS(here::here("data", "win_variable_importance.rds"))
 confmat_df      <- readRDS(here::here("data", "win_conf_matrix.rds"))
 holdout_result  <- readRDS(here::here("data", "holdout_year_predictions.rds"))
 
@@ -63,8 +64,17 @@ xgb_model <- readRDS(here::here("data", "win_model_boost_tree.rds"))
 
 # SVM RBF model
 svm_model <- readRDS(here::here("data", "win_model_svm_poly.rds"))
+nfl_wfs <- readRDS("D:/nfl/classification/wfs/win_classification_wfs2.rds")
 ```
 
+```{r}
+nfl_wfs[5,]$result
+library(kernlab)
+svm_model %>% 
+  # extract_fit_engine() 
+  extract_fit_parsnip() %>% 
+  autoplot()
+```
 
 # Intro
 My goal with this project was make an attempt at answering the age old sports question of **"So, Who is going to win this game?"** 
@@ -291,11 +301,11 @@ Using the `recipes` package, I made ID variables for information about the game 
   - removed variables with zero variation
   - normalized all my numeric predictors
 
-I used this general framework for each of my 7 models with some slight variations depending on the model. One-hot encoding was used for the XGBoost recipe.
+I used this general framework for each of my 6 models with some slight variations depending on the model. One-hot encoding was used for the XGBoost recipe.
 
 ```{r}
  # Logistic Regression data preprocessing recipe steps
-glmnet_recipe <- 
+recipe <- 
   recipes::recipe(
     formula = win ~ .,
     data    = nfl_train
@@ -305,7 +315,10 @@ glmnet_recipe <-
   ) %>% 
   recipes::step_novel(recipes::all_nominal_predictors()) %>% 
   recipes::step_dummy(recipes::all_nominal_predictors()) %>% 
-  themis::step_upsample(win, over_ratio = 0.9, skip = TRUE) %>%
+  themis::step_upsample(
+    win, 
+    over_ratio = 0.9,
+    skip       = TRUE) %>%
   recipes::step_zv(recipes::all_predictors()) %>% 
   recipes::step_normalize(recipes::all_numeric_predictors()) 
 
@@ -399,7 +412,7 @@ The next step was to tune our hyperparameters for each of models. Using the `tun
 This step is the most time consuming and resource intensive process of a machine learning workflow. So, to speed up the process I run the tuning process across multiple cores on my computer, making use of my computer's multiple processors. 
 
 
-```{r, echo = FALSE, echo = TRUE}
+```{r, eval = FALSE, echo = TRUE}
 
 # Choose metrics
 my_metrics <- yardstick::metric_set(roc_auc, pr_auc, accuracy, mn_log_loss)
@@ -414,12 +427,12 @@ set.seed(589)
 # Tune models in workflowset
 nfl_wfs <-
   nfl_wfs %>%
-  workflow_map(
+  workflowsets::workflow_map(
     "tune_grid",
     resamples = nfl_folds ,
     grid      = 20,
     metrics   = my_metrics,
-    control   = control_grid(
+    control   = tune::control_grid(
       verbose   = TRUE,
       save_pred = TRUE),
     verbose   = TRUE
@@ -436,7 +449,7 @@ Now we can compare how all of our models did compared to one another and make a 
 ![](../img/class_model_ranks.png)
 </center>
 
-If you take a look at the **ROC AUC** and **mean log loss plots** the best performing models are the Logistic Regression (logistic_reg), the Support Vector Machines (svm_poly/svm_rbf), and the Gradient Boosted Decision Trees (boost_trees). A standard threshold for log loss when it comes to binary predictions is 0.69 because that is the same probability of a 50-50 guess. The table below shows the mean log loss for each model. The best log loss you can have is 0 and the larger the number gets the worse the model is at predicting the correct outcome.
+If you take a look at the **ROC AUC** and **mean log loss plots** the best performing models are the Logistic Regression (logistic_reg), the Support Vector Machines (svm_poly/svm_rbf), and the Gradient Boosted Decision Trees (boost_trees). A standard threshold for log loss when it comes to binary predictions is ~0.69 because anything higher than that and you aren't beating the probability of a 50-50 guess. The table below shows the mean log loss for each model. The best log loss you can have is 0 and the larger the number gets the worse the model is at predicting the correct outcome.
 
 
 ```{r, eval = TRUE, echo=FALSE}
@@ -474,6 +487,41 @@ m_log_loss %>%
 Looking at a variable importance plot from the `vip` package can give us an idea of which variables are the most important to ours models. 
 
 Below is the variable importance scores for the Logisitc Regression model. The most significant variables look to be both teams Elo ratings, average score differentials and winning percentages.  
+
+```{r}
+# lm_vip 
+vip_df %>% 
+  dplyr::filter(model == "logistic_reg") %>% 
+  ggplot() +
+  geom_col(aes(x = Importance, y = reorder(Variable, Importance), fill = Sign)) +
+  ggplot2::labs(
+    title = "Variable Importance - Logisitc Regression",
+    y = "Variable"
+  ) + 
+  apatheme +
+  ggplot2::theme(
+    legend.position = "bottom"
+    # axis.text.y =  element_text(size = 8),
+    # axis.text.x =  element_text(size = 8)
+  )
+
+vip_df %>% 
+  dplyr::filter(model == "boost_tree") %>% 
+  ggplot() +
+  geom_col(aes(x = Importance, y = reorder(Variable, Importance))) +
+  ggplot2::labs(
+    title = "Variable Importance - XGBoost",
+    y = "Variable"
+  ) + 
+  apatheme +
+  ggplot2::theme(
+    legend.position = "bottom"
+    # axis.text.y =  element_text(size = 8),
+    # axis.text.x =  element_text(size = 8)
+  )
+
+```
+
 <center>
 ![](../img/vip_logistic_reg.png)
 </center>

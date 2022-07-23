@@ -1,7 +1,7 @@
 
 remove(list = ls())  # clear all workspace variables
 
- library(tidyverse)
+library(tidyverse)
 library(tidymodels)
 library(glmnet)
 library(doParallel)
@@ -166,7 +166,9 @@ win_count_plot
 # Save plot
 ggsave(
   "D:/nfl/eda/win_class_split.png",
-  win_count_plot
+  win_count_plot,
+  width  = 10,
+  height = 8
 )
 
 # *****************
@@ -182,27 +184,114 @@ ggsave(
 # Data preprocessing 
 logger::log_info("Data preprocessing...")
 
-# K nearest neighbors
-kknn_recipe <- 
+# # K nearest neighbors
+# kknn_recipe <- 
+#   recipes::recipe(
+#     formula = win ~ ., 
+#     data    = nfl_train
+#   ) %>% 
+#   recipes::update_role(
+#     game_id, team, opponent, season, week, new_role = "ID"
+#     # game_id, team, opponent, season, new_role = "ID"
+#   ) %>% 
+#   # step_string2factor(one_of("rest_days", "opp_rest_days")) %>% 
+#   step_novel(all_nominal_predictors()) %>% 
+#   step_dummy(all_nominal_predictors()) %>% 
+#   # themis::step_smote(win) %>%
+#   # themis::step_smote(win, over_ratio = 0.8,  skip = T) %>%      
+#   step_zv(all_predictors()) %>% 
+#   step_normalize(all_numeric_predictors()) %>% 
+#   themis::step_smote(win)
+
+# Base recipe
+base_recipe <- 
   recipes::recipe(
-    formula = win ~ ., 
-    data    = nfl_train
+  formula = win ~ ., 
+  data    = nfl_train
   ) %>% 
   recipes::update_role(
     game_id, team, opponent, season, week, new_role = "ID"
-    # game_id, team, opponent, season, new_role = "ID"
-  ) %>% 
-  # step_string2factor(one_of("rest_days", "opp_rest_days")) %>% 
-  step_novel(all_nominal_predictors()) %>% 
-  step_dummy(all_nominal_predictors()) %>% 
-  themis::step_upsample(win, over_ratio = 0.8,  skip = T) %>%      
-  step_zv(all_predictors()) %>% 
-  step_normalize(all_numeric_predictors())
+  ) 
 
-kknn_recipe %>% 
-  prep() %>% 
-  juice() %>% 
-  count(win)
+# normalized recipe
+norm_recipe <- 
+  base_recipe %>% 
+  recipes::step_novel(recipes::all_nominal_predictors()) %>% 
+  recipes::step_dummy(recipes::all_nominal_predictors()) %>% 
+  recipes::step_zv(recipes::all_predictors()) %>% 
+  recipes::step_normalize(recipes::all_numeric_predictors())
+
+# norm_recipe %>% 
+#   prep() %>% 
+#   juice() %>% 
+#   count(win)
+
+# norm_smote_recipe <- 
+#   norm_recipe %>% 
+#   themis::step_up(win, over_ratio = 0.9) 
+
+norm_smote_recipe <- 
+  norm_recipe %>% 
+  themis::step_smote(win, over_ratio = 0.9,  skip = T)
+
+
+# norm_smote_recipe %>% 
+#   prep() %>% 
+#   juice() %>% 
+#   count(win)
+
+# themis::step_smote(win, over_ratio = 0.8,  skip = T)
+# recipe(~., nfl_train) %>%
+#   step_smote(win, over_ratio = .9) %>%
+#   prep() %>%
+#   bake(new_data = NULL) %>%
+#   ggplot(aes(win)) +
+#   geom_bar()
+
+
+# One hot encoding recipe
+oh_recipe <-
+  base_recipe %>% 
+  recipes::step_novel(all_nominal_predictors()) %>% 
+  recipes::step_dummy(all_nominal_predictors(), one_hot = TRUE) %>% 
+  recipes::step_zv(all_predictors()) 
+
+# One hot encoding, up sampling recipe
+oh_smote_recipe <- 
+  oh_recipe %>% 
+  themis::step_smote(win, over_ratio = 0.9,  skip = T)
+                        
+  # themis::step_up(win) 
+# themis::step_smote(win, over_ratio = 0.8,  skip = T)
+
+# nnet recipe
+nnet_recipe <- 
+  base_recipe %>%
+  recipes::step_normalize(recipes::all_numeric_predictors()) 
+
+# nnet up sampling
+nnet_smote_recipe <- 
+  nnet_recipe %>% 
+  themis::step_smote(win, over_ratio = 0.9,  skip = T)
+  # themis::step_smote(win) 
+
+
+# SVM recipe
+svm_recipe <- 
+  base_recipe %>% 
+  recipes::step_zv(all_predictors()) %>% 
+  recipes::step_normalize(recipes::all_numeric_predictors()) 
+  
+# SVM recipe
+svm_smote_recipe <- 
+  svm_recipe %>% 
+  themis::step_smote(win, over_ratio = 0.9,  skip = T)
+  # themis::step_smote(win) 
+  
+# kknn_recipe %>% 
+#   prep() %>% 
+#   juice() %>% 
+#   count(win)
 
 # knn_juice <- juice(prep(kknn_recipe))
 # count(knn_juice, win)
@@ -225,22 +314,22 @@ kknn_recipe %>%
 #   step_normalize(all_numeric_predictors()) 
 
 # glmnet linear regression
-glmnet_recipe <- 
-  recipe(
-    formula = win ~ .,
-    data    = nfl_train
-  ) %>% 
-  recipes::update_role(
-    game_id, team, opponent, season, week, new_role = "ID"
-    # game_id, team, opponent, season, new_role = "ID"
-  ) %>% 
-  # step_string2factor(one_of("rest_days", "opp_rest_days")) %>% 
-  step_novel(all_nominal_predictors()) %>% 
-  step_dummy(all_nominal_predictors()) %>% 
-  themis::step_upsample(win, over_ratio = 0.8,  skip = T) %>%
-  # themis::step_smote(win,  over_ratio = 0.8, skip       = T ) %>%
-  step_zv(all_predictors()) %>% 
-  step_normalize(all_numeric_predictors()) 
+# glmnet_recipe <- 
+#   recipe(
+#     formula = win ~ .,
+#     data    = nfl_train
+#   ) %>% 
+#   recipes::update_role(
+#     game_id, team, opponent, season, week, new_role = "ID"
+#     # game_id, team, opponent, season, new_role = "ID"
+#   ) %>% 
+#   # step_string2factor(one_of("rest_days", "opp_rest_days")) %>% 
+#   step_novel(all_nominal_predictors()) %>% 
+#   step_dummy(all_nominal_predictors()) %>% 
+#   themis::step_smote(win, over_ratio = 0.8,  skip = T) %>%
+#   # themis::step_smote(win,  over_ratio = 0.8, skip       = T ) %>%
+#   step_zv(all_predictors()) %>% 
+#   step_normalize(all_numeric_predictors()) 
 
 # glmnet_recipe %>% 
 #   prep() %>% 
@@ -248,19 +337,21 @@ glmnet_recipe <-
 #   count(win)
 
 # XGBoost trees
-xgboost_recipe <- 
-  recipes::recipe(
-    formula = win ~ ., 
-    data    = nfl_train
-  ) %>% 
-  recipes::update_role(
-    game_id, team, opponent, season, week, new_role = "ID"
-    # game_id, team, opponent, season, new_role = "ID"
-  ) %>% 
-  step_novel(all_nominal_predictors()) %>% 
-  step_dummy(all_nominal_predictors(), one_hot = TRUE) %>% 
-  themis::step_upsample(win, over_ratio = 0.8,  skip = T) %>%
-  step_zv(all_predictors()) 
+# xgboost_recipe <- 
+#   recipes::recipe(
+#     formula = win ~ ., 
+#     data    = nfl_train
+#   ) %>% 
+#   recipes::update_role(
+#     game_id, team, opponent, season, week, new_role = "ID"
+#     # game_id, team, opponent, season, new_role = "ID"
+#   ) %>% 
+#   step_novel(all_nominal_predictors()) %>% 
+#   step_dummy(all_nominal_predictors(), one_hot = TRUE) %>% 
+#   themis::step_smote(win, over_ratio = 0.8,  skip = T) %>%
+#   step_zv(all_predictors()) 
+
+
 
 # xgboost_recipe %>% 
 #   prep() %>% 
@@ -277,7 +368,7 @@ xgboost_recipe <-
 #     game_id, team, opponent, season, week, new_role = "ID"
 #     # game_id, team, opponent, season, new_role = "ID"
 #   ) %>% 
-#   themis::step_upsample(win, over_ratio = 0.8,  skip = T) 
+#   themis::step_smote(win, over_ratio = 0.8,  skip = T) 
 
 # MARS model
 # earth_recipe <- 
@@ -292,7 +383,7 @@ xgboost_recipe <-
 #   # step_string2factor(one_of("rest_days", "opp_rest_days")) %>% 
 #   step_novel(all_nominal_predictors()) %>% 
 #   step_dummy(all_nominal_predictors()) %>% 
-#   themis::step_upsample(win, over_ratio = 0.8,  skip = T) %>% 
+#   themis::step_smote(win, over_ratio = 0.8,  skip = T) %>% 
 #   step_zv(all_predictors()) 
 
 # earth_recipe %>% 
@@ -300,52 +391,50 @@ xgboost_recipe <-
 #   juice() %>% 
 #   count(win)
 
-nnet_recipe <- 
-  recipe(
-    formula = win ~ ., 
-    data    = nfl_train
-  ) %>% 
-  recipes::update_role(
-    game_id, team, opponent, season, week, new_role = "ID"
-    # game_id, team, opponent, season, new_role = "ID"
-  ) %>% 
-  # step_novel(all_nominal_predictors()) %>%
-  # step_dummy(all_nominal_predictors(), one_hot = TRUE) %>%
-  themis::step_upsample(win, over_ratio = 0.8,  skip = T) %>% 
-  step_normalize(all_numeric_predictors()) 
+# nnet_recipe <- 
+#   recipe(
+#     formula = win ~ ., 
+#     data    = nfl_train
+#   ) %>% 
+#   recipes::update_role(
+#     game_id, team, opponent, season, week, new_role = "ID"
+#     # game_id, team, opponent, season, new_role = "ID"
+#   ) %>% 
+#   themis::step_smote(win, over_ratio = 0.8,  skip = T) %>% 
+#   step_normalize(all_numeric_predictors()) 
 
-nnet_recipe %>% 
-  prep() %>% 
-  juice()
-
-nnet_recipe %>% 
-  prep() %>% 
-  juice() %>% 
-  count(win)
-
-kernlab_recipe <- 
-  recipe(
-    formula = win ~ ., 
-    data    = nfl_train
-  ) %>% 
-  recipes::update_role(
-    game_id, team, opponent, season, week, new_role = "ID"
-  ) %>% 
-  themis::step_upsample(win, over_ratio = 0.8,  skip = T) %>% 
-  step_zv(all_predictors()) %>% 
-  step_normalize(all_numeric_predictors()) 
-
-kernlab_recipe %>% 
-  prep() %>% 
-  juice() %>% 
-  count(win)
+# nnet_recipe %>% 
+#   prep() %>% 
+#   juice()
+# 
+# nnet_recipe %>% 
+#   prep() %>% 
+#   juice() %>% 
+#   count(win)
+# 
+# kernlab_recipe <- 
+#   recipe(
+#     formula = win ~ ., 
+#     data    = nfl_train
+#   ) %>% 
+#   recipes::update_role(
+#     game_id, team, opponent, season, week, new_role = "ID"
+#   ) %>% 
+#   themis::step_smote(win, over_ratio = 0.8,  skip = T) %>% 
+#   step_zv(all_predictors()) %>% 
+#   step_normalize(all_numeric_predictors()) 
+# 
+# kernlab_recipe %>% 
+#   prep() %>% 
+#   juice() %>% 
+#   count(win)
 
 
 # ********************
 # ---- Model Spec ----
 # ********************
 
-kknn_spec <- 
+knn_spec <- 
   nearest_neighbor(
     neighbors   = tune(),
     weight_func = tune()) %>% 
@@ -400,14 +489,14 @@ nnet_spec <-
   set_engine("nnet") %>% 
   set_mode("classification")
 
-kernlab_spec <- 
+svm_spec <- 
   svm_rbf(
     cost      = tune(), 
     rbf_sigma = tune()
   ) %>% 
   set_mode("classification") 
 
-kernlab_poly_spec <- 
+svm_poly_spec <- 
   svm_poly(
     cost         = tune(),
     degree       = tune(), 
@@ -427,33 +516,86 @@ nfl_folds <- rsample::vfold_cv(nfl_train, v = 10, strata = win)
 # nfl_folds <- rsample::bootstraps(nfl_train, strata = win)
 
 # ---- Workflow set of models ----
-nfl_wfs <- 
+nfl_wfs <-
   workflow_set(
     preproc = list(
-      kknn_rec         = kknn_recipe,
-      glmnet_rec       = glmnet_recipe,
-      # ranger_rec      = ranger_recipe,
-      xgboost_rec      = xgboost_recipe,
-      # earth_rec        = earth_recipe,
-      nnet_rec         = nnet_recipe,
-      kernlab_poly_rec = kernlab_recipe,
-      kernlab_rec      = kernlab_recipe
+      kknn_rec        = norm_smote_recipe,
+      glmnet_rec      = norm_smote_recipe,
+      xgboost_rec     = oh_smote_recipe,
+      nnet_rec        = nnet_smote_recipe,
+      svm_poly_rec    = svm_smote_recipe,
+      svm_rbf_rec     = svm_smote_recipe
     ),
     models  = list(
-      kknn       = kknn_spec,
-      glmnet     = glmnet_spec,
-      xgboost    = xgboost_spec,
-      # earth      = earth_spec,
-      nnet       = nnet_spec,
-      svm_poly   = kernlab_poly_spec,
-      svm        = kernlab_spec
+      knn            = knn_spec,
+      glmnet         = glmnet_spec,
+      xgboost        = xgboost_spec,
+      nnet           = nnet_spec,
+      svm_poly       = svm_poly_spec,
+      svm_rbf        = svm_spec
     ),
     cross = F
   )
+# nfl_wfs <-
+#   workflow_set(
+#     preproc = list(
+#       kknn_rec        = norm_recipe,
+#       kknn_rec_up     = norm_smote_recipe,
+#       glmnet_rec      = norm_recipe,
+#       glmnet_rec_up   = norm_smote_recipe,
+#       xgboost_rec     = oh_recipe,
+#       xgboost_smote_rec  = oh_smote_recipe,
+#       nnet_rec        = nnet_recipe,
+#       nnet_smote_rec     = nnet_smote_recipe,
+#       svm_poly_rec    = svm_recipe,
+#       svm_poly_smote_rec = svm_smote_recipe,
+#       svm_rbf_rec     = svm_recipe,
+#       svm_rbf_smote_rec  = svm_smote_recipe
+#     ),
+#     models  = list(
+#       knn            = knn_spec,
+#       knn_up         = knn_spec,
+#       glmnet         = glmnet_spec,
+#       glmnet_up      = glmnet_spec,
+#       xgboost        = xgboost_spec,
+#       xgboost_up     = xgboost_spec,
+#       nnet           = nnet_spec,
+#       nnet_up        = nnet_spec,
+#       svm_poly       = svm_poly_spec,
+#       svm_poly_up    = svm_poly_spec,
+#       svm_rbf        = svm_spec,
+#       svm_rbf_up     = svm_spec
+#     ),
+#     cross = F
+#   )
+
+# nfl_wfs <-
+#   workflow_set(
+#     preproc = list(
+#       kknn_rec         = kknn_recipe,
+#       glmnet_rec       = glmnet_recipe,
+#       # ranger_rec      = ranger_recipe,
+#       xgboost_rec      = xgboost_recipe,
+#       # earth_rec        = earth_recipe,
+#       nnet_rec         = nnet_recipe,
+#       kernlab_poly_rec = kernlab_recipe,
+#       kernlab_rec      = kernlab_recipe
+#     ),
+#     models  = list(
+#       kknn       = knn_spec,
+#       glmnet     = glmnet_spec,
+#       xgboost    = xgboost_spec,
+#       # earth      = earth_spec,
+#       nnet       = nnet_spec,
+#       svm_poly   = svm_poly_spec,
+#       svm        = svm_spec
+#     ),
+#     cross = F
+#   )
 
 # Choose metrics
-# my_metrics <- yardstick::metric_set(rsq, rmse, mae)
-my_metrics <- yardstick::metric_set(roc_auc, pr_auc, accuracy, mn_log_loss, spec, sens)
+met_set <- yardstick::metric_set(roc_auc, accuracy, mn_log_loss, 
+                                 sensitivity, specificity, j_index)
 
 # Set up parallelization, using computer's other cores
 parallel::detectCores(logical = FALSE)
@@ -469,7 +611,7 @@ nfl_wfs <-
     "tune_grid",
     resamples = nfl_folds ,
     grid      = 20,
-    metrics   = my_metrics,
+    metrics   = met_set,
     control   = control_grid(
       verbose   = TRUE,
       save_pred = TRUE),
@@ -485,7 +627,7 @@ nfl_wfs <-
     "tune_race_anova",
     resamples = nfl_folds,
     grid      = 20,
-    metrics   = my_metrics,
+    metrics   = met_set,
     control = finetune::control_race(
       verbose       = TRUE,
       save_pred     = TRUE,
@@ -538,15 +680,15 @@ class_mod_comp_plot <-
 
 class_mod_comp_plot 
   # scale_y_continuous(limits = c(0, 1))
-# plotly::ggplotly(class_mod_comp_plot)
+plotly::ggplotly(class_mod_comp_plot)
 save_path <- "D:/nfl/classification/"
 
 # Save plot
 ggsave(
   paste0(save_path, "plots/class_model_ranks.png"),
   class_mod_comp_plot,
-  width  = 10,
-  height = 8
+  width  = 12,
+  height = 10
 )
 
 
@@ -580,7 +722,8 @@ conf_mat_lst   <- list()
 roc_lst        <- list()
 vip_lst        <- list()
 
-# i <- 2
+# i <- 4
+
 
 # rm(i, model, model_name, mod_workflow, mod_final_fit, mod_last_fit, mod_workflow_fit, resample_roc_plot, vip_plot,
 #    mod_test,mod_train, train_acc, test_acc, overall_aucroc, test_metrics, train_metrics, mod_metrics, conf_mat, conf_mat_plot,conf_mat_lst, vip_lst, metrics_lst,
@@ -654,7 +797,7 @@ for (i in 1:length(nfl_wfs$wflow_id)) {
       y        = "True Positive Rate (Sensitivity)"
     ) + 
     apatheme
-  
+  # resample_roc_plot
   # *************
   # ---- VIP ----
   # *************
@@ -732,7 +875,8 @@ for (i in 1:length(nfl_wfs$wflow_id)) {
       data   = "test",
       model  = model_name
       )
-   
+  
+
   # print(train_metrics)
   # print(test_metrics)
   
@@ -740,6 +884,21 @@ for (i in 1:length(nfl_wfs$wflow_id)) {
   mod_metrics <- dplyr::bind_rows(train_metrics, test_metrics)
   
   print(mod_metrics)
+  
+  # logger::log_info("sensitivity")
+  # 
+  # mod_train %>% 
+  #   yardstick::sens(truth = win, estimate = .pred_class)
+  # mod_test %>% 
+  #   yardstick::sens(truth = win, estimate = .pred_class)
+  # 
+  # logger::log_info("Specifficty")
+  
+  # mod_train %>% 
+  #   yardstick::spec(truth = win, estimate = .pred_class)
+  # mod_test %>% 
+    # yardstick::spec(truth = win, estimate = .pred_class)
+  
   
   # Keep metrics
   metrics_lst[[i]] <- mod_metrics
