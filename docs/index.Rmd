@@ -31,12 +31,14 @@ model_dat <- readRDS(here::here("data", "football_wins_lag_elo.rds"))
 
 # offense    <- readRDS(here::here("data", "offensive.rds"))
 # defense    <- readRDS(here::here("data", "defensive.rds"))
+nfl_split       <- readRDS(here::here("data", "class_split_data.rds"))
 nfl_train       <- readRDS(here::here("data", "class_train_data.rds"))
 nfl_test        <- readRDS(here::here("data", "class_test_data.rds"))
 wfs_ranks       <- readRDS(here::here("data", "class_wfs_ranks.rds"))
 roc_df          <- readRDS(here::here("data", "win_roc.rds"))
 vip_df          <- readRDS(here::here("data", "win_variable_importance.rds"))
 confmat_df      <- readRDS(here::here("data", "win_conf_matrix.rds"))
+metrics_df      <- readRDS(here::here("data", "win_metrics.rds"))
 holdout_result  <- readRDS(here::here("data", "holdout_year_predictions.rds"))
 
 holdout_df <-
@@ -62,9 +64,16 @@ log_reg_model <- readRDS(here::here("data", "win_model_logistic_reg.rds"))
 # XGBoost model
 xgb_model <- readRDS(here::here("data", "win_model_boost_tree.rds"))
 
+# SVM Poly model
+svm_poly_model <- readRDS(here::here("data", "win_model_svm_poly.rds"))
+
 # SVM RBF model
-svm_model <- readRDS(here::here("data", "win_model_svm_poly.rds"))
-nfl_wfs <- readRDS("D:/nfl/classification/wfs/win_classification_wfs2.rds")
+svm_rbf_model <- readRDS(here::here("data", "win_model_svm_rbf.rds"))
+
+# SVM RBF model
+mlp_model <- readRDS(here::here("data", "win_model_svm_poly.rds"))
+
+  nfl_wfs <- readRDS("D:/nfl/classification/wfs/win_classification_wfs2.rds")
 ```
 
 ```{r}
@@ -293,37 +302,39 @@ I decided I wanted to run my data across a panel of 6 different models and see h
 The first step was to split up our data into testing and training splits (75% training, 25% testing). When I split my data, I chose to stratify the data by the binary win/loss value to ensure there was the same proportion of wins and losses in our training and testing data splits. 
 
 ## Data Preprocessing
-Using the `recipes` package, I made ID variables for information about the game and when it happened. I then applied some recipe steps to my training data. Because I decided to only use the home teams data, this meant that there was going to be more wins than losses in my dataset because the home team tends to win more often then the away team (56% wins / 44% losses). To account for the slight imbalance of wins to losses in the data, I chose to use the `themis` package to upsample my data using the `themis::step_upsample()` function. 
+Using the `recipes` package, I made ID variables for information about the game and when it happened. I then applied some recipe steps to my training data. Because I decided to only use the home teams data, this meant that there was going to be more wins than losses in my dataset because the home team tends to win more often then the away team (56% wins / 44% losses). To account for the slight imbalance of wins to losses in the data, I chose to use the `themis` package to upsample my data using the `themis::step_smote()` function. 
 
-  - string variables to factors
-  - assigned unseen factor levels to new values 
-  - created dummy variables
-  - removed variables with zero variation
-  - normalized all my numeric predictors
+### **Recipe steps**
+- `step_zv` is applied to all predictors to remove all variables with only one variable (zero-variance)
+- `step_normalize` is used to normalize all the numeric predictors in the training data so that they all have a standard deviation of 1 and a mean of 0 
+- `step_smote` is applied to our dependent **win** variable to fix the class imbalance due to having slightly more wins than losses in the data. The `step_smote` function works by upsampling the minority class and generating new, synthetic data by using the nearest-neighbors of the minority class instances. 
 
-I used this general framework for each of my 6 models with some slight variations depending on the model. One-hot encoding was used for the XGBoost recipe.
 
-```{r}
- # Logistic Regression data preprocessing recipe steps
-recipe <- 
+Below I create the two recipe steps that we will apply to our training data before modeling. 
+```{r, echo = TRUE, eval = FALSE}
+# Base recipe
+base_recipe <- 
   recipes::recipe(
-    formula = win ~ .,
-    data    = nfl_train
-    ) %>% 
+  formula = win ~ ., 
+  data    = nfl_train
+  ) %>% 
   recipes::update_role(
     game_id, team, opponent, season, week, new_role = "ID"
-  ) %>% 
-  recipes::step_novel(recipes::all_nominal_predictors()) %>% 
-  recipes::step_dummy(recipes::all_nominal_predictors()) %>% 
-  themis::step_upsample(
-    win, 
-    over_ratio = 0.9,
-    skip       = TRUE) %>%
+  ) 
+
+# Normalize, SMOTE algo upsampling recipe
+norm_smote_recipe <- 
+  base_recipe %>% 
   recipes::step_zv(recipes::all_predictors()) %>% 
-  recipes::step_normalize(recipes::all_numeric_predictors()) 
-
+  recipes::step_normalize(recipes::all_numeric_predictors())
+  themis::step_smote(win, over_ratio = 0.9,  skip = T)
+  
+# zero variance SMOTE algo upsampling recipe
+zv_smote_recipe <- 
+  base_recipe %>% 
+  recipes::step_zv(all_predictors()) %>% 
+  themis::step_smote(win, over_ratio = 0.9,  skip = T)
 ```
-
 
 ## Model Selection
 
@@ -331,8 +342,8 @@ recipe <-
 
 I created 10 cross-validation folds from the training data. As I did with the initial training/testing split, I made sure to create **stratified resamples using the win/loss variable to ensure the same proportion of wins and losses appear in CV folds as the do in the original data.**
 
-```{r}
-# Set seed 
+```{r, echo = TRUE, eval = FALSE}
+# Set random seed 
 set.seed(432)
 
 # Cross-validation folds
@@ -377,29 +388,27 @@ fold_splot
 ```
 
 ## workflowsets
-Using the `workflowsets` I created a workflowset containing each of the data preprocessing recipes and corresponding model specifications.
+Using the `workflowsets` I created a `workflow_set` object containing each of the data preprocessing recipes and corresponding model specifications.
 
-```{r}
+```{r, echo = TRUE, eval = FALSE}
 # Workflow set of candidate models
-nfl_wfs <- 
+nfl_wfs <-
   workflowsets::workflow_set(
     preproc = list(
-      kknn_rec         = kknn_recipe,
-      glmnet_rec       = glmnet_recipe,
-      xgboost_rec      = xgboost_recipe,
-      earth_rec        = earth_recipe,
-      nnet_rec         = nnet_recipe,
-      kernlab_poly_rec = kernlab_recipe,
-      kernlab_rec      = kernlab_recipe
+      kknn_rec        = norm_smote_recipe,
+      glmnet_rec      = norm_smote_recipe,
+      xgboost_rec     = zv_smote_recipe,
+      nnet_rec        = norm_smote_recipe,
+      svm_poly_rec    = norm_smote_recipe,
+      svm_rbf_rec     = norm_smote_recipe
     ),
     models  = list(
-      kknn       = kknn_spec,
-      glmnet     = glmnet_spec,
-      xgboost    = xgboost_spec,
-      earth      = earth_spec,
-      nnet       = nnet_spec,
-      svm_poly   = kernlab_poly_spec,
-      svm        = kernlab_spec
+      knn            = knn_spec,
+      glmnet         = glmnet_spec,
+      xgboost        = xgboost_spec,
+      nnet           = nnet_spec,
+      svm_poly       = svm_poly_spec,
+      svm_rbf        = svm_spec
     ),
     cross = F
   )
@@ -411,6 +420,8 @@ The next step was to tune our hyperparameters for each of models. Using the `tun
 ### Parallel processing
 This step is the most time consuming and resource intensive process of a machine learning workflow. So, to speed up the process I run the tuning process across multiple cores on my computer, making use of my computer's multiple processors. 
 
+### Racing models
+To get another boost in processing time, I made use of the `tune_race_anova` from the `finetune` package, which makes use of a repeated measure ANOVA model to iterativily eliminates tuning parameters that are unlikely to yield the best results.  Combining **parrallel processing** and **racing methods** can improve processing times by [~35 fold](https://finetune.tidymodels.org/reference/tune_race_anova.html). 
 
 ```{r, eval = FALSE, echo = TRUE}
 
@@ -442,6 +453,8 @@ nfl_wfs <-
 modeltime::parallel_stop()
 ```
 
+# Model Evaluation 
+
 ## Model comparisons
 Now we can compare how all of our models did compared to one another and make a decision as to which one we want to use to make predictions. The plots below shows how the 6 models performed on the set of resampling data. 
 
@@ -449,34 +462,48 @@ Now we can compare how all of our models did compared to one another and make a 
 ![](../img/class_model_ranks.png)
 </center>
 
-If you take a look at the **ROC AUC** and **mean log loss plots** the best performing models are the Logistic Regression (logistic_reg), the Support Vector Machines (svm_poly/svm_rbf), and the Gradient Boosted Decision Trees (boost_trees). A standard threshold for log loss when it comes to binary predictions is ~0.69 because anything higher than that and you aren't beating the probability of a 50-50 guess. The table below shows the mean log loss for each model. The best log loss you can have is 0 and the larger the number gets the worse the model is at predicting the correct outcome.
+If you take a look at the **ROC AUC** and **mean log loss plots** the best performing models are the Logistic Regression (logistic_reg), the Support Vector Machines (svm_poly/svm_rbf), the Multilayer Perceptron (mlp) and the Gradient Boosted Decision Trees (boost_trees). 
 
+I decided to set aside the Multilayer Perceptron model due to the slight increase in mean log loss relative to the other top performing models. 
+
+In particular, the boosted trees looks to perform at approximately the same level asthe mlp model when it comes from correctly predicting wins (sensitivity) and correctly predicting losses (specificity), without the increase in log loss. 
+
+<br>
+
+A standard threshold for log loss when it comes to binary predictions is ~0.69 because anything higher than that and you aren't beating the probability of a 50-50 guess. The table below shows the mean log loss for each model. The best log loss you can have is 0 and the larger the number gets the worse the model is at predicting the correct outcome.
+
+The table belows shows the performance metrics for how each model.
 
 ```{r, eval = TRUE, echo=FALSE}
-metric_df <-
+resamp_metrics <-
   wfs_ranks %>%
-  dplyr::filter(.metric %in% c("roc_auc", "mn_log_loss")) %>% 
+  dplyr::filter(.metric %in% c("accuracy", "roc_auc", "sensitivity", "specificity" ,"mn_log_loss")) %>% 
   dplyr::group_by(model, .metric) %>% 
-  # dplyr::arrange(.metric, .by_group = T) %>% 
   dplyr::slice(1) %>% 
   dplyr::ungroup() %>% 
   tidyr::pivot_wider(
-    id_cols = c(model, rank),
+    id_cols     = c(model, rank),
     names_from  = .metric, 
     values_from = mean
     ) %>% 
-  dplyr::select(model, rank, mean_log_loss = mn_log_loss, roc_auc) %>% 
+  dplyr::rename(mean_log_loss = mn_log_loss) %>%
   dplyr::arrange(rank) %>% 
-  # dplyr::mutate(chance_to_win = exp(-mn_log_loss)) %>% 
   dplyr::mutate(across(where(is.numeric), round, 3)) 
 
-metric_df %>% 
-  knitr::kable()
+# Flextable of metrics
+resamp_metrics %>% 
+  flextable::flextable() %>% 
+  flextable::add_header_row(
+    values    = c("", "", "Resample Metrics"),
+    colwidths = c(1, 1, 5)
+    ) %>%
+  flextable::theme_box() %>%
+  flextable::align(align = "center", part = "all")
 ```
 
 
 ```{r}
-m_log_loss %>% 
+resamp_metrics %>% 
   dplyr::arrange(mean_log_loss) %>% 
   ggplot() +
   geom_point(aes(x = reorder(model, mean_log_loss), y = mean_log_loss), size = 2) +
@@ -484,54 +511,126 @@ m_log_loss %>%
 ```
 
 ## Variable Importance
-Looking at a variable importance plot from the `vip` package can give us an idea of which variables are the most important to ours models. 
+Looking at at variable importance plots, generated from the `vip` package, can give us an idea of which variables are the most important to ours models. 
 
-Below is the variable importance scores for the Logisitc Regression model. The most significant variables look to be both teams Elo ratings, average score differentials and winning percentages.  
+Below is the variable importance scores for the Logistic Regression and the XGBoost models. The most important variables in both models are both teams Elo ratings, the cumaltive average score differential and the opponent's winning percentage.  
 
 ```{r}
-# lm_vip 
-vip_df %>% 
-  dplyr::filter(model == "logistic_reg") %>% 
-  ggplot() +
-  geom_col(aes(x = Importance, y = reorder(Variable, Importance), fill = Sign)) +
-  ggplot2::labs(
-    title = "Variable Importance - Logisitc Regression",
-    y = "Variable"
-  ) + 
-  apatheme +
-  ggplot2::theme(
-    legend.position = "bottom"
-    # axis.text.y =  element_text(size = 8),
-    # axis.text.x =  element_text(size = 8)
-  )
+# library(patchwork)
+# log_reg_vip <-
+  # vip_df %>%
+  # # dplyr::filter(model == "logistic_reg") %>%
+  #   dplyr::filter(model == "boost_tree") %>%
+  # ggplot() +
+  # geom_col(aes(x = Importance, y = reorder(Variable, Importance))) +
+  # ggplot2::labs( title = "Variable Importance", subtitle = "Logisitc Regression",y = "Variable") +
+  # apatheme
+# log_reg_vip + xgb_vip
+```
 
+```{r, eval = TRUE, echo = FALSE}
+# log_reg_vip + xgb_vip
 vip_df %>% 
-  dplyr::filter(model == "boost_tree") %>% 
-  ggplot() +
-  geom_col(aes(x = Importance, y = reorder(Variable, Importance))) +
+  dplyr::filter(model != "mlp") %>% 
+   dplyr::mutate(
+    model = dplyr::case_when(
+      model == "logistic_reg" ~ "Logistic Regression",
+      model == "boost_tree"   ~ "XGBoost"
+    ),
+    model = factor(model, levels = c("Logistic Regression", "XGBoost"))
+  ) %>% 
+  ggplot2::ggplot() +
+  ggplot2::geom_col(aes(x = Importance, y = Variable)) +
+  ggplot2::facet_wrap(~model, scales = "free_x") +
+  # ggplot2::facet_wrap(~model) 
   ggplot2::labs(
-    title = "Variable Importance - XGBoost",
-    y = "Variable"
+    title = "Variable Importance Plots",
+    y     = "Variable"
   ) + 
   apatheme +
   ggplot2::theme(
-    legend.position = "bottom"
-    # axis.text.y =  element_text(size = 8),
-    # axis.text.x =  element_text(size = 8)
+    axis.text.y =  element_text(size = 8),
+    axis.text.x =  element_text(size = 8)
   )
 
 ```
 
-<center>
-![](../img/vip_logistic_reg.png)
-</center>
+# Test Metrics
+I then selected the tuning parameters for each model that had the best performance metrics on the data resamples. Using these model parameters, I refit each model using the initial data split. I then used the final fitted model to predict on the training and test sets. Below I've summarised the models performance on the training and testing data splits. 
 
-<center>
-![](../img/vip_boost_tree.png)
-</center>
+last_fit
+## Test metrics table
+```{r, eval = TRUE, echo=FALSE}
+
+select_best()
+resamp_metrics <-
+  wfs_ranks %>%
+  dplyr::filter(.metric %in% c("accuracy", "roc_auc", "sensitivity", "specificity" ,"mn_log_loss")) %>% 
+  dplyr::group_by(model, .metric) %>% 
+  dplyr::slice(1) %>% 
+  dplyr::ungroup() %>% 
+  tidyr::pivot_wider(
+    id_cols     = c(model, rank),
+    names_from  = .metric, 
+    values_from = mean
+    ) %>% 
+  dplyr::rename(mean_log_loss = mn_log_loss) %>%
+  dplyr::arrange(rank) %>% 
+  dplyr::mutate(across(where(is.numeric), round, 3)) 
+
+# Flextable of metrics
+resamp_metrics %>% 
+  flextable::flextable() %>% 
+  flextable::add_header_row(
+    values    = c("", "", "Resample Metrics"),
+    colwidths = c(1, 1, 5)
+    ) %>%
+  flextable::theme_box() %>%
+  flextable::align(align = "center", part = "all")
+
+metrics_df %>% 
+  dplyr::filter(.metric != "kap") %>% 
+  dplyr::group_by(model, .metric) %>% 
+  tidyr::pivot_wider(
+      id_cols     = c(model, data),
+      names_from  = .metric, 
+      values_from = .estimate
+    ) %>% 
+  dplyr::mutate(across(where(is.numeric), round, 2)) %>% 
+  dplyr::rename(mean_log_loss = mn_log_loss, "Data split" = data, sensitivity = sens, specificity = spec) %>% 
+  flextable::flextable() %>% 
+  flextable::add_header_row(
+    values    = c("", "", "Best model metrics"),
+    colwidths = c(1, 1, 5)
+    ) %>%
+  flextable::theme_box() %>%
+  flextable::align(align = "center", part = "all")
+```
+
+```{r}
+metrics_df %>% 
+  dplyr::filter(!.metric %in% c("accuracy", "kap")) %>% 
+  dplyr::group_by(model, .metric) %>% 
+  # tidyr::pivot_wider(
+  #     id_cols     = c(model, data),
+  #     names_from  = .metric,
+  #     values_from = .estimate
+  #   ) %>%
+  dplyr::mutate(across(where(is.numeric), round, 2)) %>% 
+  ggplot2::ggplot() +
+  ggplot2::geom_line(aes(y = model, x = .estimate)) + 
+  ggplot2::geom_point(aes(y = model, x = .estimate, col = data)) +
+  ggplot2::facet_wrap(~.metric) +
+  apatheme + 
+  labs(
+    title = "Performance of the best models"
+  )
+
+```
+
 
 ## ROC Curves
-Receiver Operator Characteristic curves, (aka ROC curves) are a way of understanding how well a model is at predicting the True Positive events vs False Positive events. In this scenario a True Positive event is the model predicts a win and the team wins, while a False Positive event is the model predicts a win, and the team losses. The True Positive Rate (TPR) is on the Y axis and the False Positive Rate (FPR) is on the X axis. The TPR, or sensitivity, along the Y axis indicates the probability that the model predicted a win and the team actually won. While FPR or, 1 - specificity, along the X axis indicates the probability that the model predicted a win and the team actually lost. 
+Receiver Operator Characteristic curves, (aka ROC curves) are a way of understanding how well a model is predicting the True Positive events vs. the False Positive events. In this scenario a True Positive event is the model predicts a win and the team wins, while a False Positive event is the model predicts a win, and the team loses. The True Positive Rate (TPR) is on the Y axis and the False Positive Rate (FPR) is on the X axis. The TPR, or sensitivity, along the Y axis indicates the probability that the model predicted a win and the team actually won. While FPR or, 1 - specificity, along the X axis indicates the probability that the model predicted a win and the team actually lost. 
 
 The closer the ROC curve is to the top left corner of the plot the better the model is doing at correctly classifying the data. A perfect ROC Curve would be a 90 degree angle along the top left corner of the plot.
 

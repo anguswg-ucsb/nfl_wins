@@ -84,8 +84,8 @@ nfl_df <-
   model_dat  %>% 
   # dplyr::filter(season != 2019) %>% 
   dplyr::filter(season != 2021, home == 1) %>% 
-  dplyr::select(-abs_spread_line, -home, -home_fav, -fav, -spread_line) %>% 
-  dplyr::select(season, week, game_id, team, opponent, win, div_game, rest_days, 
+  dplyr::select(-abs_spread_line, -home, -home_fav, -fav, -spread_line, -div_game) %>% 
+  dplyr::select(season, week, game_id, team, opponent, win, rest_days, 
                 opp_rest_days, elo, opp_elo, score_diff, 
                 opp_score_diff, turnovers, opp_turnovers,
                 # score_diff_qtr_1, opp_score_diff_qtr_1,
@@ -235,18 +235,19 @@ norm_smote_recipe <-
   themis::step_smote(win, over_ratio = 0.9,  skip = T)
 
 
-# norm_smote_recipe %>% 
-#   prep() %>% 
-#   juice() %>% 
-#   count(win)
+norm_smote_recipe %>%
+  prep() %>%
+  juice() %>%
+  count(win)
 
 # themis::step_smote(win, over_ratio = 0.8,  skip = T)
 # recipe(~., nfl_train) %>%
 #   step_smote(win, over_ratio = .9) %>%
-#   prep() %>%
-#   bake(new_data = NULL) %>%
-#   ggplot(aes(win)) +
-#   geom_bar()
+  norm_smote_recipe %>% 
+  prep() %>%
+  bake(new_data = NULL) %>%
+  ggplot(aes(win)) +
+  geom_bar()
 
 
 # One hot encoding recipe
@@ -267,6 +268,9 @@ oh_smote_recipe <-
 # nnet recipe
 nnet_recipe <- 
   base_recipe %>%
+  # recipes::step_novel(all_nominal_predictors()) %>% 
+  # recipes::step_dummy(all_nominal_predictors()) %>% 
+  recipes::step_zv(all_predictors()) %>% 
   recipes::step_normalize(recipes::all_numeric_predictors()) 
 
 # nnet up sampling
@@ -275,10 +279,16 @@ nnet_smote_recipe <-
   themis::step_smote(win, over_ratio = 0.9,  skip = T)
   # themis::step_smote(win) 
 
+nnet_smote_recipe %>%
+  prep() %>%
+  juice() %>%
+  count(win)
 
 # SVM recipe
 svm_recipe <- 
-  base_recipe %>% 
+  base_recipe %>%
+  # recipes::step_novel(all_nominal_predictors()) %>% 
+  # recipes::step_dummy(all_nominal_predictors()) %>% 
   recipes::step_zv(all_predictors()) %>% 
   recipes::step_normalize(recipes::all_numeric_predictors()) 
   
@@ -287,7 +297,17 @@ svm_smote_recipe <-
   svm_recipe %>% 
   themis::step_smote(win, over_ratio = 0.9,  skip = T)
   # themis::step_smote(win) 
-  
+
+std_smote_recipe <- 
+  base_recipe %>%
+  recipes::step_zv(all_predictors()) %>% 
+  recipes::step_normalize(recipes::all_numeric_predictors()) %>% 
+  themis::step_smote(win, over_ratio = 0.9,  skip = T)
+svm_smote_recipe %>%
+  prep() %>%
+  juice() %>%
+  count(win)
+
 # kknn_recipe %>% 
 #   prep() %>% 
 #   juice() %>% 
@@ -522,9 +542,9 @@ nfl_wfs <-
       kknn_rec        = norm_smote_recipe,
       glmnet_rec      = norm_smote_recipe,
       xgboost_rec     = oh_smote_recipe,
-      nnet_rec        = nnet_smote_recipe,
-      svm_poly_rec    = svm_smote_recipe,
-      svm_rbf_rec     = svm_smote_recipe
+      nnet_rec        = std_smote_recipe,
+      svm_poly_rec    = std_smote_recipe,
+      svm_rbf_rec     = std_smote_recipe
     ),
     models  = list(
       knn            = knn_spec,
@@ -641,7 +661,7 @@ nfl_wfs <-
 modeltime::parallel_stop()
 
 nfl_wfs$result[[1]]$.notes[[1]]$note
-# nfl_wfs3   <- readRDS(paste0(save_path, "wfs/win_classification_wfs2.rds"))
+nfl_wfs3   <- readRDS(paste0(save_path, "wfs/win_classification_wfs2.rds"))
 rank_results(nfl_wfs)
 wfs_ranks <- rank_results(nfl_wfs)
 wfs_ranks
@@ -722,12 +742,15 @@ conf_mat_lst   <- list()
 roc_lst        <- list()
 vip_lst        <- list()
 
-# i <- 4
+# i <- 5
 
 
 # rm(i, model, model_name, mod_workflow, mod_final_fit, mod_last_fit, mod_workflow_fit, resample_roc_plot, vip_plot,
 #    mod_test,mod_train, train_acc, test_acc, overall_aucroc, test_metrics, train_metrics, mod_metrics, conf_mat, conf_mat_plot,conf_mat_lst, vip_lst, metrics_lst,
 # roc_auc_curve_plot, mod_results)
+
+# class(nfl_wfs)
+# i= 2 
 
 # Extract wf set results
 for (i in 1:length(nfl_wfs$wflow_id)) {
@@ -757,13 +780,17 @@ for (i in 1:length(nfl_wfs$wflow_id)) {
   model_mode <- mod_workflow$fit$actions$model$spec$mode
   
   logger::log_info("\n\nExtracting workflow & finalizing model fit...\n  ---  {model_name} - {model_mode} --- ")
+  
   # mod_results$.metrics
   # select_best(mod_results, metric = "roc_auc")
   # select_best(mod_results, metric = "mn_log_loss")
+  
   # *************
   # ---- Fit ----
   # *************
+  
   # mod_results$.notes[[11]]$note
+  
   # Finalize workflow fit
   mod_workflow_fit <- 
     mod_workflow %>% 
@@ -880,25 +907,45 @@ for (i in 1:length(nfl_wfs$wflow_id)) {
   # print(train_metrics)
   # print(test_metrics)
   
-  # Model train/test metrics
-  mod_metrics <- dplyr::bind_rows(train_metrics, test_metrics)
-  
-  print(mod_metrics)
+
   
   # logger::log_info("sensitivity")
+  # # 
+  sens_train <- 
+    mod_train %>%
+    yardstick::sens(truth = win, estimate = .pred_class) %>% 
+    dplyr::mutate(
+      data   = "train",
+      model  = model_name
+      )
+  sens_test <-
+    mod_test %>%
+    yardstick::sens(truth = win, estimate = .pred_class) %>% 
+    dplyr::mutate(
+      data   = "test",
+      model  = model_name
+    )
   # 
-  # mod_train %>% 
-  #   yardstick::sens(truth = win, estimate = .pred_class)
-  # mod_test %>% 
-  #   yardstick::sens(truth = win, estimate = .pred_class)
-  # 
-  # logger::log_info("Specifficty")
+  spec_train <- 
+    mod_train %>%
+    yardstick::spec(truth = win, estimate = .pred_class)  %>% 
+    dplyr::mutate(
+      data   = "train",
+      model  = model_name
+    )
   
-  # mod_train %>% 
-  #   yardstick::spec(truth = win, estimate = .pred_class)
-  # mod_test %>% 
-    # yardstick::spec(truth = win, estimate = .pred_class)
+  spec_test <- 
+    mod_test %>%
+    yardstick::spec(truth = win, estimate = .pred_class) %>% 
+    dplyr::mutate(
+      data   = "test",
+      model  = model_name
+    )
   
+  # Model train/test metrics
+  mod_metrics <- dplyr::bind_rows(train_metrics, sens_train, spec_train, test_metrics, sens_test, spec_test)
+  
+  print(mod_metrics)
   
   # Keep metrics
   metrics_lst[[i]] <- mod_metrics
