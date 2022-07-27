@@ -17,6 +17,7 @@ save_path <- "D:/nfl/classification/"
 # *******************
 # ---- Load Data ----
 # *******************
+
 na_df <- nfl_df[rowSums(is.na(nfl_df)) > 0, ]
 
 # # Load Lag NFL win data

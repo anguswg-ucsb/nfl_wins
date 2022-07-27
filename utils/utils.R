@@ -66,7 +66,7 @@ other_fact_table <- tibble::tibble(
   )
 )
 
-# Making a theme
+# ---- apatheme ----
 apatheme <-
   theme_bw()+
   theme(
@@ -76,14 +76,27 @@ apatheme <-
     axis.line        = element_line(),
     text             = element_text(family='Helvetica'),
     legend.title     = element_blank(),
-    plot.title       = element_text(color = "black", face = "bold"),
+    legend.text      = element_text(color = "black", size = 12),
+    plot.subtitle = element_text(color = "black", size = 14),
+    plot.title       = element_text(color = "black", size = 16, face = "bold"),
     axis.title       = element_text(color = "black", 
-                                    face = "bold", size = 10),
-    axis.text.y      = element_text(color = "black", size = 10),
-    axis.text.x      = element_text(color = "black", size = 10),
-    strip.text.x     = element_text(color = "black", face = "bold"),
-    strip.text.y     = element_text(color = "black", face = "bold")
+                                    face  = "bold",
+                                    size  = 14,
+                                    hjust = 0.5,
+                                    vjust = 2),
+    axis.text.y      = element_text(color = "black", size = 14),
+    axis.text.x      = element_text(color = "black", size = 14),
+    strip.text.x     = element_text(color = "black", size = 14, face = "bold"),
+    strip.text.y     = element_text(color = "black", size = 14, face = "bold")
   )
+ggplot2::theme( 
+  axis.title.x        = ggplot2::element_text(size = 14, hjust=0.5,  vjust = -2),
+  axis.title.y        = ggplot2::element_text(size = 16, hjust=0.5, vjust = 2),
+  axis.text.x = ggplot2::element_text(size = 14),
+  axis.text.y = ggplot2::element_text(size = 14)
+  # axis.text = ggplot2::element_text(size = 14)
+  # panel.grid.minor.x  = ggplot2::element_blank()
+)
 # Making a theme
 simple_theme <-
   theme_classic()+
