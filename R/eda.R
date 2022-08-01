@@ -285,6 +285,130 @@ ggsave(
   width = 12,
   height = 8
 )
+
+# ************************
+# ---- QB EPA vs Wins ----
+# ************************
+
+
+win_rel <- 
+  football %>% 
+  dplyr::group_by(season, team) %>% 
+  dplyr::summarise(
+    across(c(turnovers, score_drives, qb_epa, top_pct, score_diff, third_down_pct), mean, na.rm = T),
+    across(c(win), sum, na.rm = T)
+    # wins   = sum(win, na.rm = T),
+    # qb_epa = mean(qb_epa, na.rm = T)
+  ) %>% 
+  dplyr::ungroup() %>% 
+  # dplyr::group_by(team) %>% 
+  # dplyr::mutate(
+  #   mean_qb_epa = mean(qb_epa, na.rm = T)
+  # )  %>% 
+  dplyr::left_join(
+    nflfastR::teams_colors_logos,
+    by = c("team" = "team_abbr")
+  ) %>% 
+  # dplyr::arrange(mean_qb_epa) %>% 
+  dplyr::ungroup() %>% 
+  dplyr::mutate(
+    top_pct        = round(top_pct, 3) * 100,
+    third_down_pct = round(third_down_pct, 3) * 100
+  )
+
+team_metrics_plot <- 
+    win_rel %>% 
+    tidyr::pivot_longer(c(turnovers, score_drives, qb_epa, top_pct, score_diff, third_down_pct)) %>% 
+    dplyr::mutate(
+      name = dplyr::case_when(
+        name == "qb_epa" ~ "QB EPA",
+        name == "score_diff" ~ "Score Differential",
+        name == "score_drives" ~ "Scoring Drives",
+        name == "third_down_pct" ~ "Third Down %",
+        name == "turnovers" ~ "Turnovers",
+        name == "top_pct" ~ "% Time of possession"
+      )
+    ) %>% 
+    arrange(win) %>% 
+    group_by(name) %>% 
+    mutate(ref_pt = nth(value, -2)) %>% 
+    ggplot(aes(x = win, y = value, col = name)) +
+    # geom_point(aes(x = value, y = win, col = name)) + 
+    # geom_point(aes(x = win, y = value, col = name)) +
+    geom_point() + 
+    # facet_grid(name~., scales = "free") + 
+    facet_wrap(~name, scales = "free") +
+    labs(
+      title = "Relating team metrics to end-of-season win totals",
+      x     = "Season Win Total",
+      y     = "",
+      col   = "Metric"
+    ) +
+    apatheme +
+    theme(
+      legend.title = element_text(color = "black", size = 14, face = "bold")
+    )
+team_metrics_plot
+ggsave(
+    here::here("img", "team_metrics_wins.png"),
+    team_metrics_plot,
+    width = 14,
+    height = 10
+  )
+
+win_total_avg <- 
+  win_rel %>% 
+  dplyr::group_by(win) %>%   
+  dplyr::summarise(
+    across(c(turnovers, score_drives, qb_epa, top_pct, score_diff, third_down_pct), mean, na.rm = T)
+    # across(c(win), sum, na.rm = T)
+    # wins   = sum(win, na.rm = T),
+    # qb_epa = mean(qb_epa, na.rm = T)
+  ) %>% 
+  dplyr::ungroup() 
+win_total_avg %>% 
+  tidyr::pivot_longer(c(turnovers, score_drives, qb_epa, top_pct, score_diff, third_down_pct)) %>% 
+  ggplot() +
+  # geom_point(aes(x = value, y = win, col = name)) + 
+  geom_point(aes(x = win, y = value, col = name))+
+  facet_wrap(~name, scales = "free_y")
+# ggplot() +
+# geom_point(data = win_total, aes(x = reorder(team, mean_wins), y = total_wins, color = team_color3))
+win_rel %>% 
+  ggplot() +
+  geom_hline(yintercept = 0, size = 1.5) +
+  geom_point(aes(x = win, y = third_down_pct))
+  geom_boxplot(aes(x = reorder(team, mean_qb_epa), 
+                   y = qb_epa, 
+                   fill = team_nick, color = team_nick)) +
+  scale_fill_manual(
+    breaks = epa$team_nick,
+    values = c(epa$team_color)
+  ) +
+  scale_color_manual(
+    breaks = epa$team_nick,
+    values = c(epa$team_color2)
+  ) +
+  labs(
+    title    = "Which teams have the best quarterbacks?", 
+    subtitle = "Average QB EPA per season (1999 - 2021)",
+    x        = "Team", 
+    y        = "Quarterback EPA"
+    # fill = ""
+  ) + 
+  apatheme +
+  # theme_bw() +
+  theme(
+    legend.position = "none",
+    axis.text.x     = element_text(angle = -45)
+  )
+qb_epa_plot
+ggsave(
+  here::here("img", "qb_epa.png"),
+  qb_epa_plot,
+  width = 12,
+  height = 8
+)
 # ************************************
 # ---- Win Correlation w/ Offense ----
 # ************************************

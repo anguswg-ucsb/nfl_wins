@@ -165,6 +165,8 @@ mean_na <- function(x) {
   ifelse(is.na(x), mean(x, na.rm = TRUE), x)
 }
 
+
+# takes in NFL fast R play-by-play data and returns a cleaned tibble with game level offensive stats
 get_offense2 <- function(season_pbp) {
 
   logger::log_info("\n\nCalculating {season_pbp$season[1]} offensive stats...")
@@ -236,7 +238,6 @@ get_offense2 <- function(season_pbp) {
     dplyr::select(game_id, qtr, drive, play_id, game_seconds_remaining, 
                 posteam, posteam_score_post) %>% 
     dplyr::group_by(game_id, qtr, posteam) %>%
-    # dplyr::filter(game_id == "2021_01_ARI_TEN") %>%
     dplyr::arrange(drive, .by_group = T) %>% 
     dplyr::slice(
       which.min(play_id),
@@ -265,7 +266,7 @@ get_offense2 <- function(season_pbp) {
     tidyr::pivot_wider(
       id_cols     = c(game_id, posteam),
       names_from  = c(name, qtr),
-      names_glue = "{name}_{qtr}",
+      names_glue  = "{name}_{qtr}",
       values_from = value
     ) %>% 
     dplyr::mutate(

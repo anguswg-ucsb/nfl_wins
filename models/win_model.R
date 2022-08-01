@@ -17,6 +17,111 @@ save_path <- "D:/nfl/classification/"
 # *******************
 # ---- Load Data ----
 # *******************
+# % of games the home favorite wins
+favwins <-
+  nfl %>% 
+  dplyr::filter(week < 19) %>% 
+  dplyr::select(game_id, season, home, win, fav, abs_spread_line) %>% 
+  dplyr::mutate(
+    fav_win = dplyr::case_when(
+      win == 1 & fav == 1 ~ 1,
+      TRUE                ~ 0
+    ),
+    # home = factor(home, levels = c(1, 0))
+  ) %>% 
+  dplyr::group_by(season, fav) %>%
+  dplyr::mutate(
+    games = n()
+  ) %>% 
+  dplyr::ungroup() %>% 
+  dplyr::filter(fav == 1) %>% 
+  dplyr::group_by(season) %>%
+  dplyr::summarise(
+    fav_win = sum(fav_win, na.rm = T)
+  ) %>% 
+  na.omit() %>% 
+  dplyr::ungroup() %>% 
+  dplyr::group_by(season) %>% 
+  dplyr::mutate(
+    games       = sum(fav_win, na.rm = T),
+    fav_win_pct = round(fav_win/games, 3)
+  ) %>% 
+  dplyr::ungroup() %>% 
+  dplyr::filter(home == 1)
+
+favwin <- 
+  nfl %>% 
+  dplyr::filter(week < 19) %>% 
+  dplyr::select(game_id, season, home, win, fav, abs_spread_line) %>% 
+  dplyr::mutate(
+    fav_win = dplyr::case_when(
+      win == 1 & fav == 1 ~ 1,
+      TRUE                ~ 0
+    ),
+    home = factor(home, levels = c(1, 0))
+  ) %>% 
+  dplyr::group_by(season, home, fav) %>%
+  dplyr::mutate(
+    games = n()
+  ) %>% 
+  dplyr::ungroup() %>% 
+  dplyr::filter(fav == 1) %>% 
+  dplyr::group_by(season, win, home) %>% 
+  count() %>% 
+  dplyr::ungroup() %>% 
+  dplyr::group_by(season, home) %>% 
+  dplyr::mutate(
+    fav_win_pct = round(n/sum(n), 3)
+  ) %>% 
+  dplyr::ungroup() %>% 
+  dplyr::group_by(season) %>%
+  dplyr::mutate(
+    nsum            = sum(n)
+  ) %>%
+  dplyr::filter(win == 1) 
+  # dplyr::ungroup()
+
+all_fav_wins <- 
+  favwin %>% 
+  dplyr::group_by(season) %>% 
+  dplyr::summarise(
+    fav_win_pct = round(sum(n)/nsum, 3)
+  ) %>% 
+  dplyr::slice(1) %>% 
+  dplyr::ungroup()
+
+
+favwin %>% 
+  dplyr::mutate(
+    home_away = dplyr::case_when(
+      home == 1 ~ "home_fav_win_pct",
+      home == 0 ~ "away_fav_win_pct"
+    )
+  ) %>% 
+  tidyr::pivot_wider(
+    id_cols = c(season),
+    names_from  = home_away,
+    values_from = fav_win_pct
+    ) %>% 
+  dplyr::left_join(
+    all_fav_wins,
+    by = "season"
+    ) %>% 
+  tidyr::pivot_longer(cols = c(-season))  
+
+favwin %>% 
+  ggplot() +
+  geom_line(aes(x = season, y = fav_win_pct, col = factor(home)), size = 2, alpha = 0.7) +
+  ggplot2::scale_y_continuous(limits = c(0, 1),
+                              labels = function(x) paste0(x*100, "%")
+                              ) +
+  labs(
+    title = "How often does the favored team",
+    x = "Season",
+    y = "Home winning %"
+  ) +
+  apatheme
+
 
 na_df <- nfl_df[rowSums(is.na(nfl_df)) > 0, ]
 
@@ -660,32 +765,15 @@ nfl_wfs <-
 
   # Stop parrallelization
 modeltime::parallel_stop()
+save_path <- "D:/nfl/classification/"
 
-nfl_wfs$result[[1]]$.notes[[1]]$note
-nfl_wfs3   <- readRDS(paste0(save_path, "wfs/win_classification_wfs2.rds"))
-rank_results(nfl_wfs)
+
+# nfl_wfs   <- readRDS(paste0(save_path, "wfs/win_classification_wfs2.rds"))
+
+# print ranks table
 wfs_ranks <- rank_results(nfl_wfs)
 wfs_ranks
-# nfl_wfs$result[[2]]$.metrics
-# nfl_wfs2 <- nfl_wfs
-# k <- 2
-# for (k in 1:length(nfl_wfs2$result)) {
-#   
-#   logger::log_info("{k} of {length(nfl_wfs2$result)}")
-#   
-#   r_len <- nfl_wfs2$result[[k]]$.metrics
-#   
-#   
-#   for (z in 1:length(r_len)) {
-#     
-#     logger::log_info("{z} of {length(r_len)}")
-#     
-#     nfl_wfs2$result[[k]]$.metrics[[z]]  <- nfl_wfs2$result[[k]]$.metrics[[z]] %>% 
-#       dplyr::filter(!.metric %in% c("spec", "sens"))
-#   }
-# }
-# rank_results(nfl_wfs2)
-# rank_results(nfl_wfs[c(1:4),])
+
 # Comparing Accuracy and ROC AUC of 7 models
 class_mod_comp_plot <-
   # nfl_wfs2 %>%
@@ -700,7 +788,7 @@ class_mod_comp_plot <-
   apatheme
 
 class_mod_comp_plot 
-  # scale_y_continuous(limits = c(0, 1))
+
 plotly::ggplotly(class_mod_comp_plot)
 save_path <- "D:/nfl/classification/"
 
@@ -708,7 +796,7 @@ save_path <- "D:/nfl/classification/"
 ggsave(
   paste0(save_path, "plots/class_model_ranks.png"),
   class_mod_comp_plot,
-  width  = 12,
+  width  = 16,
   height = 10
 )
 
