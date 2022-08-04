@@ -7,8 +7,12 @@ library(janitor)
 library(stringr)
 library(nflfastR)
 library(timetk)
-
+remotes::install_github("mikejohnson51/cram")
 source("utils/utils.R")
+install.packages("pak")
+pak::pkg_install("Lynker-Tech/cram")
+remotes::install_github("Lynker-Tech/cram")
+remotes::install_github("Lynker-Tech/cram")
 
 data_path  <-  here::here("data")
 

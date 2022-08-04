@@ -8,10 +8,10 @@ nfl_teams <- function() {
                   "Miami Dolphins", 
                   "Minnesota Vikings",   "New England Patriots",  "New Orleans Saints", "New York Giants",         
                   "New York Jets",       "Philadelphia Eagles",  "Pittsburgh Steelers",  "San Francisco 49ers", 
-                  "Seattle Seahawks", "Tampa Bay Buccaneers", "Tennessee Titans", "Washington Football Team", "Washington Redskins"),
+                  "Seattle Seahawks", "Tampa Bay Buccaneers", "Tennessee Titans", "Washington Football Team", "Washington Redskins", "Washington Commanders"),
     team_abb  = c("ARI", "ATL", "BAL", "BUF", "CAR", "CHI", "CIN", "CLE", "DAL", "DEN", 
                   "DET", "GB", "HOU", "IND", "JAX", "KC", "LV", "LV", "LAC", "LAC",  "LA", "LA",  "MIA", "MIN", "NE", "NO", 
-                  "NYG", "NYJ", "PHI", "PIT", "SF", "SEA", "TB", "TEN", "WAS","WAS")
+                  "NYG", "NYJ", "PHI", "PIT", "SF", "SEA", "TB", "TEN", "WAS","WAS", "WAS")
   )
   return(team_df)
 }
@@ -117,6 +117,7 @@ simple_theme <-
     strip.text.x     = element_text(color = "black",face = "bold"),
     strip.text.y     = element_text(color = "black",face = "bold")
   )
+
 scrape_pfr <- function(year) {
   
   logger::log_info("\n\nScraping Pro Football Reference...\n{year} Rushing Defense ")
