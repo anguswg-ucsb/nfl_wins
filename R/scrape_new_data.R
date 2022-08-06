@@ -10,6 +10,7 @@ library(stringr)
 library(httr)
 library(jsonlite)
 library(rvest)
+library(elo)
 
 source("utils/utils.R")
 
@@ -70,7 +71,194 @@ scrape_empty_schedule <- function(year) {
 scr <- scrape_empty_schedule(2022)
 
 saveRDS(scr, here::here("data", "empty_schedule."))
+# **************************
+# ---- Get model inputs ----
+# **************************
+# scrapes empty schedule for upcoming season (2021)
+scrape_schedule <- function(year, pred_week) {
+ pred_week <- 8
+ 
+ # week <- 18
+ year <- 2015
+ 
+ if (year >= 2021) {
 
+   
+   weeks <- 1:18
+   
+ } else if(year >= 2002 & year <= 2020) {
+
+   
+   weeks <- 1:17
+   
+ } else {
+
+   year  <- 2002
+   
+   weeks <- 1:17
+   
+ }
+
+  urls <- sapply(weeks, USE.NAMES = TRUE, simplify = TRUE, function(x) {
+    paste0("https://www.espn.com/nfl/schedule/_/week/", weeks[x],"/year/", year, "/seasontype/2")
+  }) %>% 
+    tibble::tibble() %>% 
+    dplyr::mutate(week = dplyr::row_number()) %>% 
+    stats::setNames(c("url", "week"))
+    
+ week_lst <- list()
+ 
+ for (z in 1:nrow(urls)) {
+   
+
+   # Read HTML page using URL
+   page <- rvest::read_html(urls$url[z])
+    
+   # Extract HTML nodes for table
+   page_nodes <- 
+     page %>%  
+     rvest::html_nodes("table")
+  
+    tbl_lst <- list()
+    
+    for (i in 1:length(page_nodes)) {
+      
+      logger::log_info("table {i} of {length(page_nodes)}")
+      
+      # Extract season games 
+      page_table <- rvest::html_table(
+        page_nodes[[i]],
+        header  = F,
+        fill    = T, 
+        convert = T
+      ) 
+      
+      if (page_table[1, 1] == "BYE") {
+        next
+      } else{
+        page_table <- 
+          page_table %>% 
+          dplyr::select(X1, X2) %>% 
+          dplyr::filter(X1 != "matchup") %>% 
+          stats::setNames(c("away_team", "home_team")) %>% 
+          dplyr::mutate(
+            id = 1:n()
+          ) %>% 
+          dplyr::group_by(id) %>% 
+          dplyr::mutate(
+            away_team = tail(strsplit(away_team, split = " ")[[1]], 1),
+            home_team = tail(strsplit(home_team, split = " ")[[1]], 1),
+            week      = urls$week[z]
+          ) %>% 
+          dplyr::ungroup() %>% 
+          dplyr::select(-id)
+        
+        
+        tbl_lst[[i]] <- page_table
+      }
+    }
+    
+   week_lst[[z]] <- dplyr::bind_rows(tbl_lst)
+   
+ }
+ season_schedule <- dplyr::bind_rows(week_lst)
+ 
+ return(season_schedule)
+ 
+}
+
+# **************************
+# ---- Get model inputs ----
+# **************************
+
+# scrapes empty schedule for upcoming season (2021)
+get_upcoming_game <- function(year, pred_week, post_season = FALSE) {
+  
+  if (year < 2021 & pred_week > 17) {
+    
+    pred_week <- 17
+    
+  } 
+  
+
+  
+  # If game is a post season game
+  if (post_season == TRUE) {
+    
+    url <- paste0("https://www.espn.com/nfl/schedule/_/week/", pred_week,"/year/", year, "/seasontype/3")
+    
+  } else {
+    
+    url <- paste0("https://www.espn.com/nfl/schedule/_/week/", pred_week,"/year/", year, "/seasontype/2")
+  }
+  
+  logger::log_info("\n\nRetrieving matchups:\nSeason: {year}\nWeek: {pred_week}")
+  
+  # Read HTML page using URL
+  page <- rvest::read_html(url)
+  
+  # Extract HTML nodes for table
+  page_nodes <- 
+      page %>%  
+      rvest::html_nodes("table")
+  
+  # empty list to add to in loop
+  tbl_lst <- list()
+
+  for (i in 1:length(page_nodes)) {
+    
+    # logger::log_info("table {i} of {length(page_nodes)}")
+    
+    # Extract season games 
+    page_table <- rvest::html_table(
+        page_nodes[[i]],
+        header  = F,
+        fill    = T, 
+        convert = T
+      ) 
+    
+    # if a BYE week table, skip iteration
+    if (page_table[1, 1] == "BYE") {
+      
+      next
+      
+      } else {
+        
+        page_table <- 
+          page_table %>% 
+          dplyr::select(X1, X2) %>% 
+          dplyr::filter(X1 != "matchup") %>% 
+          stats::setNames(c("away_team", "home_team")) %>% 
+          dplyr::mutate(
+            id = 1:n()
+          ) %>% 
+          dplyr::group_by(id) %>% 
+          dplyr::mutate(
+            season    = year,
+            week      = pred_week,
+            away_team = tail(strsplit(away_team, split = " ")[[1]], 1),
+            home_team = tail(strsplit(home_team, split = " ")[[1]], 1),
+            game_id   = dplyr::case_when(
+              week < 10 ~ paste0(year, "_0", week, "_", away_team, "_",  home_team),
+              week >= 10 ~ paste0(year, "_", week, "_", away_team, "_",  home_team)
+            )
+          ) %>% 
+          dplyr::ungroup() %>% 
+          dplyr::select(season, week, game_id, home_team, away_team)
+        
+        
+        tbl_lst[[i]] <- page_table
+      }
+    }
+    
+    upcoming_games <- dplyr::bind_rows(tbl_lst)
+    
+  
+    return(upcoming_games)
+  
+}
+
+new_game  <- get_upcoming_game(year = 2022, pred_week = 3)
 # **************************
 # ---- Get model inputs ----
 # **************************
@@ -240,14 +428,31 @@ scrape_recent_games <- function(year, pred_week) {
       rest_days   = as.numeric(round(difftime(gameday, lag_date), 0))
     ) %>% 
     dplyr::ungroup() %>% 
-    dplyr::select(-lag_date, -gameday, -home_score, -away_score) %>% 
+    dplyr::select(-lag_date, -gameday, -home) %>% 
     replace(is.na(.), 7) %>% 
-    dplyr::relocate(season, week, game_id, team, opponent, home_away, home, rest_days, score_diff) %>% 
+    dplyr::relocate(season, week, game_id, team, opponent, home_away, rest_days, score_diff, home_score, away_score) %>% 
     dplyr::left_join(
       dplyr::select(record, week, game_id, team, win, win_pct, home_win_pct, away_win_pct),
       by = c("week", "game_id", "team")
     )
-
+  
+  # Calculate ELO ratings
+  elo <-  
+    outcomes %>% 
+    dplyr::filter(home_away == "home_team") %>%
+    dplyr::select(season, week, game_id, team, opponent, win, home_score, away_score) %>% 
+    get_nfl_elo()
+  
+  outcomes <- 
+    outcomes %>% 
+    dplyr::left_join(
+      dplyr::select(elo, week, game_id, team, elo),
+      by = c("week", "game_id", "team")
+    )
+ return(outcomes) 
+}
+    # dplyr::group_by(season) %>% 
+    # dplyr::group_split()
   
   # outcomes <- 
   #   page_table %>% 

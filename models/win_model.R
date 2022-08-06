@@ -17,111 +17,6 @@ save_path <- "D:/nfl/classification/"
 # *******************
 # ---- Load Data ----
 # *******************
-# % of games the home favorite wins
-favwins <-
-  nfl %>% 
-  dplyr::filter(week < 19) %>% 
-  dplyr::select(game_id, season, home, win, fav, abs_spread_line) %>% 
-  dplyr::mutate(
-    fav_win = dplyr::case_when(
-      win == 1 & fav == 1 ~ 1,
-      TRUE                ~ 0
-    ),
-    # home = factor(home, levels = c(1, 0))
-  ) %>% 
-  dplyr::group_by(season, fav) %>%
-  dplyr::mutate(
-    games = n()
-  ) %>% 
-  dplyr::ungroup() %>% 
-  dplyr::filter(fav == 1) %>% 
-  dplyr::group_by(season) %>%
-  dplyr::summarise(
-    fav_win = sum(fav_win, na.rm = T)
-  ) %>% 
-  na.omit() %>% 
-  dplyr::ungroup() %>% 
-  dplyr::group_by(season) %>% 
-  dplyr::mutate(
-    games       = sum(fav_win, na.rm = T),
-    fav_win_pct = round(fav_win/games, 3)
-  ) %>% 
-  dplyr::ungroup() %>% 
-  dplyr::filter(home == 1)
-
-favwin <- 
-  nfl %>% 
-  dplyr::filter(week < 19) %>% 
-  dplyr::select(game_id, season, home, win, fav, abs_spread_line) %>% 
-  dplyr::mutate(
-    fav_win = dplyr::case_when(
-      win == 1 & fav == 1 ~ 1,
-      TRUE                ~ 0
-    ),
-    home = factor(home, levels = c(1, 0))
-  ) %>% 
-  dplyr::group_by(season, home, fav) %>%
-  dplyr::mutate(
-    games = n()
-  ) %>% 
-  dplyr::ungroup() %>% 
-  dplyr::filter(fav == 1) %>% 
-  dplyr::group_by(season, win, home) %>% 
-  count() %>% 
-  dplyr::ungroup() %>% 
-  dplyr::group_by(season, home) %>% 
-  dplyr::mutate(
-    fav_win_pct = round(n/sum(n), 3)
-  ) %>% 
-  dplyr::ungroup() %>% 
-  dplyr::group_by(season) %>%
-  dplyr::mutate(
-    nsum            = sum(n)
-  ) %>%
-  dplyr::filter(win == 1) 
-  # dplyr::ungroup()
-
-all_fav_wins <- 
-  favwin %>% 
-  dplyr::group_by(season) %>% 
-  dplyr::summarise(
-    fav_win_pct = round(sum(n)/nsum, 3)
-  ) %>% 
-  dplyr::slice(1) %>% 
-  dplyr::ungroup()
-
-
-favwin %>% 
-  dplyr::mutate(
-    home_away = dplyr::case_when(
-      home == 1 ~ "home_fav_win_pct",
-      home == 0 ~ "away_fav_win_pct"
-    )
-  ) %>% 
-  tidyr::pivot_wider(
-    id_cols = c(season),
-    names_from  = home_away,
-    values_from = fav_win_pct
-    ) %>% 
-  dplyr::left_join(
-    all_fav_wins,
-    by = "season"
-    ) %>% 
-  tidyr::pivot_longer(cols = c(-season))  
-
-favwin %>% 
-  ggplot() +
-  geom_line(aes(x = season, y = fav_win_pct, col = factor(home)), size = 2, alpha = 0.7) +
-  ggplot2::scale_y_continuous(limits = c(0, 1),
-                              labels = function(x) paste0(x*100, "%")
-                              ) +
-  labs(
-    title = "How often does the favored team",
-    x = "Season",
-    y = "Home winning %"
-  ) +
-  apatheme
-
 
 na_df <- nfl_df[rowSums(is.na(nfl_df)) > 0, ]
 
@@ -409,6 +304,7 @@ std_smote_recipe <-
   recipes::step_zv(all_predictors()) %>% 
   recipes::step_normalize(recipes::all_numeric_predictors()) %>% 
   themis::step_smote(win, over_ratio = 0.9,  skip = T)
+
 svm_smote_recipe %>%
   prep() %>%
   juice() %>%
@@ -615,11 +511,19 @@ nnet_spec <-
   set_engine("nnet") %>% 
   set_mode("classification")
 
+svm_lin_spec <- 
+  svm_linear(
+    cost      = tune()
+  ) %>% 
+  set_engine("kernlab") %>% 
+  set_mode("classification") 
+
 svm_spec <- 
   svm_rbf(
     cost      = tune(), 
     rbf_sigma = tune()
   ) %>% 
+  set_engine("kernlab") %>% 
   set_mode("classification") 
 
 svm_poly_spec <- 
@@ -627,7 +531,8 @@ svm_poly_spec <-
     cost         = tune(),
     degree       = tune(), 
     scale_factor = tune()
-    ) %>% 
+  ) %>% 
+  set_engine("kernlab") %>% 
   set_mode("classification") 
 
 # ********************************
@@ -649,6 +554,7 @@ nfl_wfs <-
       glmnet_rec      = norm_smote_recipe,
       xgboost_rec     = oh_smote_recipe,
       nnet_rec        = std_smote_recipe,
+      svm_lin_rec     = std_smote_recipe,
       svm_poly_rec    = std_smote_recipe,
       svm_rbf_rec     = std_smote_recipe
     ),
@@ -657,6 +563,7 @@ nfl_wfs <-
       glmnet         = glmnet_spec,
       xgboost        = xgboost_spec,
       nnet           = nnet_spec,
+      svm_lin        = svm_lin_spec,
       svm_poly       = svm_poly_spec,
       svm_rbf        = svm_spec
     ),
@@ -720,8 +627,10 @@ nfl_wfs <-
 #   )
 
 # Choose metrics
-met_set <- yardstick::metric_set(roc_auc, accuracy, mn_log_loss, 
-                                 sensitivity, specificity, j_index)
+met_set <- yardstick::metric_set(
+  roc_auc, accuracy, mn_log_loss, 
+  sensitivity, specificity, j_index
+  )
 
 # Set up parallelization, using computer's other cores
 parallel::detectCores(logical = FALSE)
@@ -774,7 +683,7 @@ save_path <- "D:/nfl/classification/"
 wfs_ranks <- rank_results(nfl_wfs)
 wfs_ranks
 
-# Comparing Accuracy and ROC AUC of 7 models
+ # Comparing Accuracy and ROC AUC of 7 models
 class_mod_comp_plot <-
   # nfl_wfs2 %>%
   nfl_wfs %>%
@@ -834,12 +743,12 @@ vip_lst        <- list()
 # i <- 5
 
 
-# rm(i, model, model_name, mod_workflow, mod_final_fit, mod_last_fit, mod_workflow_fit, resample_roc_plot, vip_plot,
-#    mod_test,mod_train, train_acc, test_acc, overall_aucroc, test_metrics, train_metrics, mod_metrics, conf_mat, conf_mat_plot,conf_mat_lst, vip_lst, metrics_lst,
-# roc_auc_curve_plot, mod_results)
+rm(i, model, model_name, mod_workflow, mod_final_fit, mod_last_fit, mod_workflow_fit, resample_roc_plot, vip_plot,
+   mod_test,mod_train, train_acc, test_acc, overall_aucroc, test_metrics, train_metrics, mod_metrics, conf_mat, conf_mat_plot,conf_mat_lst, vip_lst, metrics_lst,
+roc_auc_curve_plot, mod_results)
 
 # class(nfl_wfs)
-# i= 2 
+# i=5
 
 # Extract wf set results
 for (i in 1:length(nfl_wfs$wflow_id)) {
