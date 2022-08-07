@@ -30,7 +30,7 @@ library(dplyr)
 library(flextable)
 library(tidymodels)
 
-source("../utils/utils.R")
+source("utils/utils.R")
 
 # Load entire dataset
 model_dat <- readRDS(here::here("data", "football_wins_lag_elo.rds")) 
@@ -299,7 +299,7 @@ The first thing I wanted to see was the average number of games each NFL franchi
 
 <center>
 
-![](../img/team_win_totals.png)
+![](img/team_win_totals.png)
 
 </center>
 
@@ -322,7 +322,7 @@ The box plot below shows the NFL franchises on the X axis, arranged by mean QB E
 
 <br> 
 
-<center>![](../img/qb_epa.png)</center>
+<center>![](img/qb_epa.png)</center>
 
 <br>
 
@@ -343,7 +343,7 @@ Next, I wanted to see what the end of season win totals looked like when plotted
 
 <br>
 
-<center>![](../img/team_metrics_wins.png)</center>
+<center>![](img/team_metrics_wins.png)</center>
 
 <br>
 
@@ -403,7 +403,7 @@ Below is a plot displaying each team on the X axis ordered from lowest to highes
 
 <br>
 
-<center>![](../img/team_elo_ratings.png)</center>
+<center>![](img/team_elo_ratings.png)</center>
 
 <br>
 
@@ -558,7 +558,7 @@ home_favorite_plot <-
 <br>
 
 <center>
-![](../img/home_favorite_win_pct2.png)
+![](img/home_favorite_win_pct2.png)
 
 </center
 
@@ -658,7 +658,7 @@ Below is a correlation matrix that highlights the relationship between variables
 
 **Note:** Darker green colors indicate positive correlations while darker red colors indicate negative correlations.
 
-<center>![](../img/correlation_home_team.png)</center>
+<center>![](img/correlation_home_team.png)</center>
 
 <br>
 
@@ -911,7 +911,7 @@ modeltime::parallel_stop()
 Now we can see how our models did compared to one another to decide which is best suited for making accurate predictions. 
 The plots below show how the 7 models performed on the set of resampling data.
 
-<center>![](../img/class_model_ranks.png)</center>
+<center>![](img/class_model_ranks.png)</center>
 
 If you take a look at the **ROC AUC** and **mean log loss plots** the
 best performing models are the Logistic Regression (logistic_reg), the
@@ -993,7 +993,7 @@ about what makes up the variable importance scores for each model you can click 
 
 <br>
 
-<center>![](../img/var_importance.png)</center>
+<center>![](img/var_importance.png)</center>
 
 <br>
 
@@ -1094,7 +1094,7 @@ train_test_plot <-
 #   )
 ```
 
-<center>![](../img/train_test_metrics.png)</center>
+<center>![](img/train_test_metrics.png)</center>
 
 <br>
 
@@ -1202,7 +1202,7 @@ roc_curve <-
   apatheme 
 ```
 
-<center>![](../img/roc_curve.png)</center>
+<center>![](img/roc_curve.png)</center>
 
 <br>
 
@@ -1303,7 +1303,7 @@ predictions*...
 #   )
 ```
 
-<center>![](../img/cm_plot.png)</center>
+<center>![](img/cm_plot.png)</center>
 
 <br>
 
@@ -1540,7 +1540,7 @@ We can now generate predictions for the 1373 games in our testing dataset, and c
 #   )
 ```
 
-<center>![](../img/test_data_prediction_plot.png)</center>
+<center>![](img/test_data_prediction_plot.png)</center>
 
 <br> <br>
 
@@ -1696,7 +1696,7 @@ In the graph below, the X axis has the percent of correct predictions and the Y 
 
 <br>
 
-<center>![](../img/holdout_facet_line_plot.png)</center>
+<center>![](img/holdout_facet_line_plot.png)</center>
 
 <br>
 
