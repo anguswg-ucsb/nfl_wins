@@ -123,26 +123,13 @@ All data ingestion, processing, analysis, and modeling was done in R, with help 
 # **Data Retrieval**
 To start, I pulled NFL play-by-play data together using the `nflfastR` R package —performing some cleaning and wrangling tasks to get the data into a usable format.
 
-I utilized the full play-by-play data sets from 1999-2021, which included some 50,000 plays per season. For each play, there are an additional [372 columns of data giving information about what happened on a given play.](https://www.nflfastR.com/articles/field_descriptions.html) In the end I chose to completely omit the 2021 season, using it as a holdout set of data to test my models against.
-
-
-I pulled NFL play-by-play data together using the `nflfastR R package`.
-I then did some data cleaning and wrangling tasks to get the data into a
-usable format.
-
-I started by getting the full play-by-play data sets from 1999-2021. Each season there are some ~50,000 plays run, and for each play, there are 372
-columns of data giving information about what happened on that play.
-
-I ended up, using data from the 1999-2021 seasons, however I completed
-omitted the entire 2021 season to use as a holdout set of data to test
-my models against. Another thing to note is that all the data you see is from the perspective of the home team, and all model predictions indicate a home win or home loss.
+I utilized the full play-by-play data sets from 1999-2021, which included some 50,000 plays per season. For each play, there are an additional [372 columns of data giving information about what happened on a given play.](https://www.nflfastR.com/articles/field_descriptions.html) In the end I chose to completely omit the 2021 season, using it as a holdout set of data to test my models against. Another thing to note is that all the data you see is from the perspective of the home team, and all model predictions indicate a home win or home loss.
 
 **Note:** While exploring data and assembling the features I wanted to use for modeling, I created a host of utility helper functions that work off of the play-by-play output data from the nflfastR package. Those helper functions can be found
 [here](https://github.com/anguswg-ucsb/nfl_wins/blob/main/utils/utils.R).
 
-The function below takes in the NFL play-by-play returned from the `nflfastR::load_pbp()` function, and aggregates the data to game level team statistics.
-
 ```{r, eval = FALSE, echo = FALSE}
+# The function below takes in the NFL play-by-play returned from the `nflfastR::load_pbp()` function, and aggregates the data to game level team statistics.
 
 # takes in NFL fast R play-by-play data and returns a cleaned tibble with game level offensive stats
 get_offense <- function(season_pbp) {
@@ -275,10 +262,6 @@ get_offense <- function(season_pbp) {
 
 }
 ```
-
-In the end I used data from the 1999-2021 seasons, however I completed
-omitted the entire 2021 season to use as a holdout set of data to test
-my models against. Another thing to note is that all the data you see is from the perspective of the home team.
 
 <br> 
 <br>
