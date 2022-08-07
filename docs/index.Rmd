@@ -1,12 +1,12 @@
 ---
 title: "Predicting NFL wins using Machine Learning"
-author: "Angus Watters"
+author: "[Angus Watters](https://github.com/anguswg-ucsb) - [Github Repo](https://github.com/anguswg-ucsb/nfl_wins)"
 date: "`r format(Sys.Date(), '%B %d, %Y')`"
 output:
   html_document:
     toc: true
     toc_float: true
-    theme: simplex
+    theme: flatly
     highlight: tango
     code_folding: "show"
     css: custom.css
@@ -105,6 +105,7 @@ mlp_model <- readRDS(here::here("data", "win_model_svm_poly.rds"))
 ```
 
 <br>
+<br>
 
 # **Introduction**
 
@@ -141,7 +142,7 @@ my models against. Another thing to note is that all the data you see is from th
 
 The function below takes in the NFL play-by-play returned from the `nflfastR::load_pbp()` function, and aggregates the data to game level team statistics.
 
-```{r, eval = FALSE, echo = TRUE}
+```{r, eval = FALSE, echo = FALSE}
 
 # takes in NFL fast R play-by-play data and returns a cleaned tibble with game level offensive stats
 get_offense <- function(season_pbp) {
@@ -612,8 +613,8 @@ off_table %>%
 <br>
 <br>
 
-## Off field factors
-I also thought it important to include some non football related information that can be known prior to the game. These factors include the number of days of rest between games, the team’s overall, home, and away winning percentages, and the team’s Elo rating.
+## Off-field factors
+I also thought it important to include some non-football related information that can be known prior to the game. These factors include the number of days of rest between games, the team’s overall, home, and away winning percentages, and the team’s Elo rating.
 
 <br>
 

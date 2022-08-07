@@ -1,0 +1,4 @@
+name: "Predicting NFL wins using Machine Learning"
+output_dir: '.'
+output:
+  html_document
