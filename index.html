@@ -387,17 +387,7 @@ additional <a
 href="https://www.nflfastR.com/articles/field_descriptions.html">372
 columns of data giving information about what happened on a given
 play.</a> In the end I chose to completely omit the 2021 season, using
-it as a holdout set of data to test my models against.</p>
-<p>I pulled NFL play-by-play data together using the
-<code>nflfastR R package</code>. I then did some data cleaning and
-wrangling tasks to get the data into a usable format.</p>
-<p>I started by getting the full play-by-play data sets from 1999-2021.
-Each season there are some ~50,000 plays run, and for each play, there
-are 372 columns of data giving information about what happened on that
-play.</p>
-<p>I ended up, using data from the 1999-2021 seasons, however I
-completed omitted the entire 2021 season to use as a holdout set of data
-to test my models against. Another thing to note is that all the data
+it as a holdout set of data to test my models against. Another thing to note is that all the data
 you see is from the perspective of the home team, and all model
 predictions indicate a home win or home loss.</p>
 <p><strong>Note:</strong> While exploring data and assembling the
@@ -408,10 +398,6 @@ href="https://github.com/anguswg-ucsb/nfl_wins/blob/main/utils/utils.R">here</a>
 <p>The function below takes in the NFL play-by-play returned from the
 <code>nflfastR::load_pbp()</code> function, and aggregates the data to
 game level team statistics.</p>
-<p>In the end I used data from the 1999-2021 seasons, however I
-completed omitted the entire 2021 season to use as a holdout set of data
-to test my models against. Another thing to note is that all the data
-you see is from the perspective of the home team.</p>
 <p><br> <br> <br></p>
 <hr />
 </div>
