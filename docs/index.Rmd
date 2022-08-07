@@ -132,12 +132,16 @@ usable format.
 I started by getting the full play-by-play data sets from 1999-2021. Each season there are some ~50,000 plays run, and for each play, there are 372
 columns of data giving information about what happened on that play.
 
+I ended up, using data from the 1999-2021 seasons, however I completed
+omitted the entire 2021 season to use as a holdout set of data to test
+my models against. Another thing to note is that all the data you see is from the perspective of the home team, and all model predictions indicate a home win or home loss.
+
 **Note:** While exploring data and assembling the features I wanted to use for modeling, I created a host of utility helper functions that work off of the play-by-play output data from the nflfastR package. Those helper functions can be found
 [here](https://github.com/anguswg-ucsb/nfl_wins/blob/main/utils/utils.R).
 
 The function below takes in the NFL play-by-play returned from the `nflfastR::load_pbp()` function, and aggregates the data to game level team statistics.
 
-```{r, eval = FALSE, echo = FALSE}
+```{r, eval = FALSE, echo = TRUE}
 
 # takes in NFL fast R play-by-play data and returns a cleaned tibble with game level offensive stats
 get_offense <- function(season_pbp) {
@@ -271,19 +275,9 @@ get_offense <- function(season_pbp) {
 }
 ```
 
-Another note is that I ended up only using data from the perspective of the home team. 
-Initially, I had been running models with 2 data points per game, one being the home team perspective and the other being the away team perspective. I quickly ran into some major overfitting in the models, and realized it was a better idea to only use data from the home team.
-
 In the end I used data from the 1999-2021 seasons, however I completed
 omitted the entire 2021 season to use as a holdout set of data to test
-my models against. Another thing to note is that I ended up using only data from the perspective of the home team.
-
-Initially I had been running models with 2 data points for each game,
-one being the home team perspective and the other being the away team
-perspective. I pretty quickly ran into some major overfitting in my
-models and realized **it was a better idea to only use data from the
-home team.**
-
+my models against. Another thing to note is that all the data you see is from the perspective of the home team.
 
 <br> 
 <br>
@@ -346,6 +340,12 @@ Next, I wanted to see what the end of season win totals looked like when plotted
 
 **Note:** The Y axis values are not meant to be compared across plots, as they differ in units. The purpose of this figure is to show the relationship between team metrics and end-of-season win totals (from top left to bottom right):
 
+<br>
+
+<center>![](../img/team_metrics_wins.png)</center>
+
+<br>
+
 ```{r, eval = TRUE, echo=FALSE}
 team_met_tbl <- tibble::tibble(
   
@@ -368,12 +368,9 @@ team_met_tbl <- tibble::tibble(
 
 team_met_tbl %>% 
   kableExtra::kable() %>% 
+  # kableExtra::kable(align = "c") %>% 
   kableExtra::kable_material(c("striped", "hover"))
 ```
-
-<br>
-
-<center>![](../img/team_metrics_wins.png)</center>
 
 <br>
 
@@ -417,8 +414,6 @@ Sadly for Browns fans, we see here the same take-home message that we saw before
 ## Favored teams
 
 Because I will be making predictions on the outcome of NFL games, I thought it best to see how the teams favored for any given game (according to Las Vegas) actually did in those games. How often did the **team favored by Las Vegas win**? Furthermore, how often does the **home team win**? How often does a **favored home team win**? A **favored away team**?
-
-<br>
 
 The black line in the plot below indicates the percent of games won by the home team per season. The aqua blue line shows the percent of games that favored home teams won and the coral color line shows the percent of games that favored away teams won.
 
@@ -610,7 +605,7 @@ off_table <- tibble::tibble(
 )
 
 off_table %>% 
-  kableExtra::kable() %>% 
+   kableExtra::kable() %>% 
   kableExtra::kable_material(c("striped", "hover"))
 ```
 
@@ -669,10 +664,8 @@ Below is a correlation matrix that highlights the relationship between variables
 
 We can see that Elo rating has a relatively strong, positive correlation with winning. This makes a lot of sense, as a higher Elo rating (higher ranked team) is more likely to end up with a win. A positive correlation for a team’s average score differential is also intuitive. If a team, on average, has a higher score differential (they score more points than are scored against them) then they would end up winning more games. The turnover variable has a strong, negative correlation with winning. So if a team, on average, has fewer turnovers, they are also more likely to end up winning the game.
 
-<br>
-
 At this point in my analysis, I was working with ***a posteriori***
-data, so data that was collected *after* the game (i.e. data not available to someone before the game starts, like the number of turnovers in the game). However, if I wanted to make any useful predictions about the upcoming week, I would also need to create ***a priori*** data (i.e. data available *before* the event we want to predict).
+data, so data that was collected *after* the game (i.e. data not available to someone before the game starts, like the number of turnovers in the game). However, if I wanted to make any useful predictions about the upcoming week, I would need to create ***a priori*** data (i.e. data available *before* the event we want to predict)--which I then did by applying lags to the data, discussed below.
 
 <br>
 <br>
@@ -680,10 +673,7 @@ data, so data that was collected *after* the game (i.e. data not available to so
 ## Cumulative Averages
 To capture how well a team is doing throughout each season, I created lagged cumulative means for all of the above variables. For each week a team plays, the cumulative mean of the **preceding weeks** of data are calculated per variable for the upcoming slate of games.
 
-<br>
-
 Below is the general method I used to get these lagged cumulative averages. Note that for variables like winning percentage, the lagged cumulative average was **not** calculated, and rather, only the lagged values were used. In the example code below, the lagged winning percentage and the lagged cumulative average QB EPA is calculated for the Arizona Cardinals (ARI) 2014 season.
-
 ```{r, eval = TRUE, echo = TRUE}
 nfl %>% 
   dplyr::filter(season == 2014, team == "ARI") %>% 
@@ -736,10 +726,9 @@ and see how they all perform against each other
 
 <br>
 
-## Data Budget/Splits
+## Data splits
 
 The first step here was to split up the data into testing and training splits (75% training, 25% testing). When splitting, I chose to stratify the data by binary win/loss values to ensure there was an equal proportion of wins and losses in our training/testing splits.
-
 ```{r, echo = TRUE, eval = FALSE}
 # Set random seed
 set.seed(234)
@@ -754,7 +743,7 @@ nfl_train <- rsample::training(nfl_split)
 nfl_test  <- rsample::testing(nfl_split)
 ```
 
-```{r, echo = FALSE, eval = TRUE}
+```{r, echo = TRUE, eval = TRUE}
 # Partition training/testing data, stratified by win/loss
 nfl_split
 ```
@@ -781,7 +770,6 @@ To account for this slight imbalance, I chose to use the `themis` package to ups
 
 Below I create the two recipe steps that we will apply to our training
 data before modeling.
-
 ```{r, echo = TRUE, eval = FALSE}
 # Base recipe
 base_recipe <- 
@@ -828,7 +816,7 @@ nfl_folds <- rsample::vfold_cv(nfl_train, v = 10, strata = win)
 <br>
 <br>
 
-## workflowsets
+## Workflow sets
 
 Using the `workflowsets` I created a `workflow_set` object containing
 each of the data preprocessing recipes and corresponding model
@@ -939,8 +927,7 @@ The table below shows the mean log loss for each mode, the best being 0.
 The larger the number gets the worse the model is at predicting the correct outcome.
 
 The table below shows the performance metrics for each model.
-
-```{r, eval = TRUE, echo=FALSE}
+```{r, eval = FALSE, echo=FALSE}
 resamp_metrics <-
   wfs_ranks %>%
   dplyr::filter(.metric %in% c("accuracy", "roc_auc", "sensitivity", "specificity" ,"mn_log_loss")) %>% 
@@ -968,7 +955,6 @@ resamp_metrics %>%
 ```
 
 <br>
-<br>
 
 ```{r, eval = TRUE, echo=FALSE}
 resamp_metrics <-
@@ -987,10 +973,11 @@ resamp_metrics <-
   dplyr::mutate(across(where(is.numeric), round, 2)) 
 
 resamp_metrics %>% 
-  kableExtra::kable() %>% 
+  kableExtra::kable(align = "c") %>% 
   kableExtra::kable_material(c("striped", "hover"))
 ```
 
+<br>
 <br>
 
 ## Variable Importance
@@ -1002,13 +989,12 @@ about what makes up the variable importance scores for each model you can click 
 <br>
 
 **Note:**
-vip does not currently support SVM models, hence why no variable importance plots are shown for the Linear SVM. 
+`vip` does not currently support SVM models, hence why no variable importance plots are shown for the Linear SVM. 
 
 <br>
 
 <center>![](../img/var_importance.png)</center>
 
-<br>
 <br>
 
 The most important variables in both models looks to be the team's Elo
@@ -1160,7 +1146,7 @@ metrics_df %>%
                 sensitivity = sens, specificity = spec)  %>% 
   dplyr::mutate(
     `Data split` = kableExtra::cell_spec(`Data split`, color = ifelse(`Data split` == "train", "#F8766D","#00BFC4"))) %>%
-  kableExtra::kable(escape = FALSE) %>% 
+  kableExtra::kable(align = "c", escape = FALSE) %>% 
   kableExtra::kable_material(c("striped", "hover"))
 
 ```
@@ -1170,6 +1156,7 @@ metrics_df %>%
 You can see that the nearest neighbor model sees a big drop in mean log loss between training and testing data. Besides this, the remaining models appear to perform similarly with both training and testing data, which gives us some more confidence that these models would perform similarly in the real world.
 
 <br> <br>
+
 
 ## ROC Curves
 Receiver Operator Characteristic curves, (ROC curves) are a way of understanding how well a model is predicting the True Positive events vs. the False Positive events.
@@ -1186,7 +1173,6 @@ The closer the ROC curve to the top left corner of the plot, the better the mode
 ```{r, eval = FALSE, echo = TRUE, fig.align="center"}
 roc_curve <-
   roc_df %>%
-  # dplyr::filter(model %in% c("logistic_reg", "boost_tree", "mlp", "svm_linear")) %>% 
   ggplot2::ggplot() +
   ggplot2::geom_abline(
     lty   = 2, 
@@ -1214,13 +1200,6 @@ roc_curve <-
       col      = "Models"
     )  +
   apatheme 
-
-ggsave(
-    here::here("img", "roc_curve.png"),
-    roc_curve,
-    width  = 12,
-    height = 10
-  )
 ```
 
 <center>![](../img/roc_curve.png)</center>
@@ -1229,6 +1208,7 @@ ggsave(
 
 It looks like all of the models are performing similarly on the test data except for the K-nearest neighbors model, which is notably worse at classifying the data. This ROC curve visually confirms what we saw in the model metric summary table. Given these metrics, I will drop the K nearest neighbors and focus on the rest of the models. Additionally, I will only use the best performing SVM model which looks to be the Linear SVM.
 
+<br>
 <br>
 
 ## Confusion Matrices
@@ -1333,9 +1313,7 @@ than Las Vegas did in the same games
 
 -   Las Vegas's predicted more correct game winners than any of the models.
 
--   All of the models made more correct predictions than Las Vegas, doing a better job correctly predicting losses than Las Vegas
-
--   All of the models have higher specificity than Las Vegas, they all made more correct prediction than Las Vegas
+-   All of the models made more correct predictions than Las Vegas (higher specificity), doing a better job at correctly predicting losses than Las Vegas, while being worse at predicting wins 
 
 -   The Multilayer Perceptron model correctly predicted nearly 100 more losses than the Las Vegas model!
 
@@ -1345,9 +1323,11 @@ than Las Vegas did in the same games
 
 -   For this data/domain, having the model predict more wins than losses
     makes logical sense, **the home team tends to win more often than
-    they lose**
+    they lose**, and our data is entirely from the home team perspective 
 
--   In general, the models have the most trouble classifying False Positive cases
+-   The models excel at correctly predicting the True Negative cases, and correctly identify the True positive cases at a slightly lower rate than Las Vegas does 
+
+-   In general, the models have the most trouble classifying the False Positive cases
 
 <br>
 
@@ -1432,15 +1412,15 @@ confmat_tbl %>%
 
 <br>
 
-```{r, eval = TRUE, echo = TRUE, fig.align="center", fig.width=6, fig.height=6}
+```{r, eval = TRUE, echo = FALSE, fig.align="center", fig.width=6, fig.height=6}
 confmat_tbl %>%
-  kableExtra::kable() %>% 
+  kableExtra::kable(align = "c") %>% 
   kableExtra::kable_material(c("striped", "hover"))
 ```
 
 <br>
 
-Looking at the SVM model in the table above, we see a **sensitivity** of
+Taking a look at just the SVM model in the table above, we see a **sensitivity** of
 \~0.73, which means the SVM model ***correctly predicted the home team
 to win 73% of the time.*** The **specificity** of 0.64 indicates that
 ***64% of home team losses were correctly predicted***. Overall, the models all had comparable performance metrics and appear to correctly identify wins
@@ -1448,10 +1428,12 @@ and losses for the home team at the same rate.
 
 <br>
 
+--------------------------------------------
+
 ## Prediction from the test data
 
-Let’s look at the 25% of data—1373 games—that we set aside as a testing dataset. 
-We can now generate predictions for those games, and calculate the percent of games per year where our models correctly predicted the outcome (shown in the graph below).
+Let’s look at how the models performed on the 25% of the data that we set aside for testing. 
+We can now generate predictions for the 1373 games in our testing dataset, and calculate the percent of games per year where our models correctly predicted the outcome (shown in the graph below).
 
 <br>
 
@@ -1561,6 +1543,8 @@ We can now generate predictions for those games, and calculate the percent of ga
 <center>![](../img/test_data_prediction_plot.png)</center>
 
 <br> <br>
+
+--------------------------------------------
 
 ## Holdout dataset (2021 Predictions)
 
@@ -1716,7 +1700,7 @@ In the graph below, the X axis has the percent of correct predictions and the Y 
 
 <br>
 
-Looks like our predictions are right in line with Vegas! Note that some weeks we do a little better than Vegas, some weeks a little worse.
+Looks like our predictions are right in line with Vegas! Some weeks we do a little better than Vegas, some weeks a little worse.
 
 
 ```{r, eval = FALSE, echo=FALSE}
@@ -1789,7 +1773,7 @@ Looks like our predictions are right in line with Vegas! Note that some weeks we
 
 ------------------------------------------------------------------------
 
-# **Weekly predictions**
+# **Weekly Results**
 
 The table below shows actual outcomes of the 2021 season, the favored team according to Las Vegas, and predictions from our fitted models. 
 Green cells indicate that the prediction lined up with the actual game outcome, whereas red means that the prediction was incorrect. 
@@ -1797,60 +1781,37 @@ Note that the table is from the home team’s perspective (i.e. a win in the act
 
 First, let’s check out a week where our models outperformed Vegas.
 
-
-```{r, eval = TRUE, echo=FALSE}
-# # Color code TP and TN as green and FP and FN as red
-# colormatrix  <- ifelse(pred_table[, c(5, 6, 7, 8, 9)] == pred_table[, c(4, 4, 4, 4, 4)], "#85E088", "indianred2")
-# 
-# # Flextable with color coding
-# pred_table %>% 
-#   flextable::flextable() %>% 
-#   flextable::bg(j = c(5:9), bg = colormatrix) %>% 
-#   flextable::add_header_row(
-#     values    = c(" ", "Vegas", "Models"), 
-#     colwidths = c(4, 1, 4)
-#     ) %>% 
-#   flextable::theme_box() %>% 
-#   flextable::align(align = "center", part = "all")
-```
+<br>
 
 ## Good week of predictions
 
 All of our models did better than Vegas in week 12 (i.e. we correctly predicted the outcome more that Vegas did)
-
-<br>
-
 
 ```{r, eval = TRUE, echo = TRUE, ft.htmlscroll = FALSE}
 # A week with more correct predictions than Las Vegas
 good_week <- 
   pred_table %>% 
   dplyr::filter(week == 12) 
-  # dplyr::select(-mlp_pred)
 
 # Color code TP and TN as green and FP and FN as red
-good_week_color <- ifelse(good_week[, c(5, 6, 7, 8, 9)] == good_week[, c(4, 4, 4, 4, 4)], "#85E088", "indianred2")
-# good_week_color <- ifelse(good_week[, c(5, 6, 7, 8)] == good_week[, c(4, 4, 4, 4)], "#85E088", "indianred2")
-# Flextable with color coding
+good_week_color <- ifelse(good_week[, c(5, 6, 7, 8, 9)] == good_week[, c(4, 4, 4, 4, 4)],
+                          "#85E088", "indianred2")
 
+# Flextable with color coding
 good_week %>% 
   flextable::flextable() %>% 
   flextable::bg(j = c(5:9), bg = good_week_color) %>%
-  # flextable::bg(j = c(5:8), bg = good_week_color) %>%
   flextable::add_header_row(
-    values    = c(" ", "Vegas", "Models"), # values = c(" ","Vegas Predictions", "Model Predictions"),
+    values    = c(" ", "Vegas", "Models"),
     colwidths = c(4, 1, 4)
-    # colwidths = c(4, 1, 3)
-    # values    = c(" ", "Vegas / Model Predictions"), colwidths = c(4, 4)
     ) %>% 
   flextable::theme_box() %>% 
   flextable::align(align = "center", part = "all") %>% 
   flextable::fit_to_width(max_width = 6)
 ```
 
-<br>
-
-```{r, eval = TRUE, echo = TRUE, ft.htmlscroll = FALSE}
+<center><h4>Total correct predictions for week 12</h4/><center>
+```{r, eval = TRUE, echo = FALSE, ft.htmlscroll = FALSE}
 # Total correct picks by Vegas and models
 good_week %>% 
   tidyr::pivot_longer(cols = c(vegas_pred:mlp_pred)) %>% 
@@ -1864,27 +1825,25 @@ good_week %>%
   dplyr::summarise(total_correct = sum(correct, na.rm = T)) %>% 
   tidyr::pivot_wider(names_from = name, values_from = total_correct) %>%
   dplyr::relocate(vegas_pred, log_reg_pred, svm_pred, xgb_pred, mlp_pred) %>% 
-  flextable::flextable() %>% 
-  flextable::add_header_row(
-    values    = c("# of correct picks"),
-    colwidths = c(5)
-    ) %>% 
-  flextable::theme_box() %>% 
-  flextable::align(align = "center", part = "all") %>% 
-  flextable::fit_to_width(max_width = 6)
-  # kableExtra::kable() %>% 
-  # kableExtra::kable_material(c("striped", "hover"))
+  # flextable::flextable() %>% 
+  # flextable::add_header_row(
+  #   values    = c("# of correct picks"),
+  #   colwidths = c(5)
+  #   ) %>% 
+  # flextable::theme_box() %>% 
+  # flextable::align(align = "center", part = "all") %>% 
+  # flextable::fit_to_width(max_width = 6)
+  kableExtra::kable(align = "c", col.names = c("Vegas", "Logistic Reg.", "SVM Linear", "XGBoost", "MLP" )) %>%
+  kableExtra::kable_material(c("striped", "hover"))
 ```
 
 <br> <br>
 <br>
 
+------------------------------------------------------------------------
 
 ## Bad week of predictions
-And now a bad week...
-
-<br>
-
+And now looking at week 4 where the models performed worse than Vegas...
 ```{r, eval = TRUE, echo = TRUE, fig.align="center", fig.width=12, fig.height=10}
 # A week with fewer correct predictions than Las Vegas
 bad_week <- 
@@ -1892,7 +1851,8 @@ bad_week <-
   dplyr::filter(week == 4)
 
 # Color code TP and TN as green and FP and FN as red
-bad_week_color <- ifelse(bad_week[, c(5, 6, 7, 8, 9)] == bad_week[, c(4, 4, 4, 4, 4)], "#85E088", "indianred2")
+bad_week_color <- ifelse(bad_week[, c(5, 6, 7, 8, 9)] == bad_week[, c(4, 4, 4, 4, 4)],
+                         "#85E088", "indianred2")
 
 # Flextable with color coding
 bad_week %>% 
@@ -1910,7 +1870,8 @@ bad_week %>%
 
 <br>
 
-```{r, eval = TRUE, echo = TRUE, ft.htmlscroll = FALSE}
+<center><h4>Total correct predictions for week 4</h4/><center>
+```{r, eval = TRUE, echo = FALSE, ft.htmlscroll = FALSE}
 # Total correct picks by Vegas and models
 bad_week %>% 
   tidyr::pivot_longer(cols = c(vegas_pred:mlp_pred)) %>% 
@@ -1924,16 +1885,16 @@ bad_week %>%
   dplyr::summarise(total_correct = sum(correct, na.rm = T)) %>% 
   tidyr::pivot_wider(names_from = name, values_from = total_correct) %>%
   dplyr::relocate(vegas_pred, log_reg_pred, svm_pred, xgb_pred, mlp_pred) %>% 
-  flextable::flextable() %>% 
-  flextable::add_header_row(
-    values    = c("# of correct picks"),
-    colwidths = c(5)
-    ) %>% 
-  flextable::theme_box() %>% 
-  flextable::align(align = "center", part = "all") %>% 
-  flextable::fit_to_width(max_width = 6)
-  # kableExtra::kable() %>% 
-  # kableExtra::kable_material(c("striped", "hover"))
+  # flextable::flextable() %>% 
+  # flextable::add_header_row(
+  #   values    = c("# of correct picks"),
+  #   colwidths = c(5)
+  #   ) %>% 
+  # flextable::theme_box() %>% 
+  # flextable::align(align = "center", part = "all") %>% 
+  # flextable::fit_to_width(max_width = 6)
+  kableExtra::kable(align = "c", col.names = c("Vegas", "Logistic Reg.", "SVM Linear", "XGBoost", "MLP" )) %>%
+  kableExtra::kable_material(c("striped", "hover"))
 ```
 
 <br> 
@@ -1946,11 +1907,7 @@ bad_week %>%
 
 One of the biggest limitations to these models, is that there is no accounting for injuries to players. A team that loses its starting quarterback or any key players to injury before or during the game is going to likely have a much worse shot of winning a game. I considered created a binary variable that indicated whether a team was missing its starting quarterback or was making a transition to a different quarterback. However I didn't end up doing this because I didn't have an easily accesible data with this information. I figured I could create my own variable indicating if a quarterback change was made using snap percentages but I didn't go down this path. I may address this in future, if I get an idea of how I want to do it. 
 
-<br> 
-
 I also wanted to include two other variables, **bad_win_pct** and **good_win_pct**, which would indicate the percent of games a team wins against teams under .500 and teams over .500, respectively. I didn't think of this them until I was finishing this write up, and chose not to go back and add them in. I'm planning on exploring these variables further in the future.
-
-<br> 
 
 I am currently working on a building out an REST API that will scrape current game data, feed this data into one of these models, and return predictions to end users. My goal is to have this operational by week 2 of the 2022 season.
 
@@ -1962,7 +1919,9 @@ I am currently working on a building out an REST API that will scrape current ga
 
 # **Conclusion**
 We did it! We implemented NFL data into a Machine learning workflow and generated some reasonably accurate predictions.
+
 To recap what happened for the skimmers out there: 
+
   - Started with raw NFL play-by-play data 
   - Cleaned and processed the data into a model-ready format 
   - Selected a handful of ML models 
