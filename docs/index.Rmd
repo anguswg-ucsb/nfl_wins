@@ -587,7 +587,6 @@ Originally, I created many more features for the models to consider (this includ
 
 ```{r, eval = TRUE, echo=FALSE}
 
-
 off_table <- tibble::tibble(
   Variable    = c("Score Differential",
                   "Third Down Conversion Rate", 
