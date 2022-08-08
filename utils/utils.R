@@ -1038,8 +1038,8 @@ get_schedule <- function(df) {
   wins <- 
     wins %>% 
     dplyr::mutate(
-      home_team     =  str_split_fixed(split_game_id, "_", 2)[,2],
-      away_team     =  str_split_fixed(split_game_id, "_", 2)[,1]
+      home_team     =  stringr::str_split_fixed(split_game_id, "_", 2)[,2],
+      away_team     =  stringr::str_split_fixed(split_game_id, "_", 2)[,1]
     ) %>% 
     dplyr::mutate(
       opponent  = case_when(
@@ -1389,17 +1389,16 @@ get_closing_line <- function(season_pbp) {
  return(season_spread_lines)
     
 }
-
+# Calculate NFL Elo Ratings
 get_nfl_elo <- function(nfl_season) {
-  # nfl_season <- nfl_split[[23]]
-  # rm(nfl_season, df, nfl_er, nfl_elo, home_elo, away_elo)
+
   df <- 
     nfl_season %>% 
     dplyr::mutate(
       wins_home = home_score > away_score
     )
   
-  nfl_er <- elo.run(wins_home ~ team + opponent, data = df, k = 20) %>% 
+  nfl_er <- elo::elo.run(wins_home ~ team + opponent, data = df, k = 20) %>% 
     as.data.frame() %>% 
     dplyr::group_by(team.A) %>%
     dplyr::mutate(
@@ -1441,7 +1440,7 @@ get_nfl_elo <- function(nfl_season) {
   away_rating <- 
     nfl_elo %>% 
     dplyr::group_by(opponent) %>% 
-    group_split()
+    dplyr::group_split()
   
   away_elo <- lapply(away_rating, FUN = function(x) {
     rate <- 
