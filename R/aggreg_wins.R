@@ -19,10 +19,6 @@ data_path  <-  here::here("data")
 # ---- NFL Fast R ----
 # ********************
 
-# Angus Watters 
-# Exploratory Data Analysis
-# NFL Data from nflFastR
-
 # Question 1: what stats relate to teams winning?
 # Question 2: Can we predict whether or not a home team will win their game?
 
@@ -30,11 +26,6 @@ desc <- nflfastR::field_descriptions
 
 # unique seasons
 seasons_lst <- 1999:2021
-
-# **********************
-# ---- Player stats ----
-# **********************
-
 
 # ******************
 # ---- Team pbp ----
@@ -389,9 +380,40 @@ hist(final_lag_data$rest_days, breaks = 20)
 
 saveRDS(final_lag_data, here::here("data", "football_wins_lag_elo.rds"))
 
+# ******************************************************************************************************
+# ******************************************************************************************************
+
 # ********************************
-# ---- Get Data for API model ----
+# ---- Get data for API model ----
 # ********************************
+# unique seasons
+seasons_lst <- 1999:2021
+
+# ***************************
+# ---- Play-by-play data ----
+# ***************************
+
+# Clear cache if needed
+# nflreadr::.clear_cache()
+
+# load QB stats and calculate game EPA, cumalitve EPA, EPA per play
+pbp_stats <- lapply(seasons_lst, FUN = function(x) {
+  
+  logger::log_info("Retrieving {x} weekly team pbp stats...")
+  pbp <- nflfastR::load_pbp(x)
+}
+) 
+
+# pbp_df <- dplyr::bind_rows(pbp_stats)
+
+# saveRDS(pbp_stats, here::here("data", "pbp.rds"))
+
+# ***********************************
+# ***********************************
+
+# *****************
+# ---- Offense ----
+# *****************
 
 # Data for model to be used in API (less variables used than first modeling approach)
 
@@ -420,6 +442,13 @@ if(file.exists(here::here("data", "api_offense.rds"))) {
   # Save
   saveRDS(off_df, here::here("data", "api_offense.rds"))
 }
+
+# ***********************************
+# ***********************************
+
+# ********************
+# ---- Record/Elo ----
+# ********************
 
 # Check if api_offense.rds file exists, if not, go get it 
 if(file.exists(here::here("data", "wins.rds"))) {
@@ -566,6 +595,7 @@ final_lag_data <-
 
 # save
 saveRDS(final_lag_data, here::here("data", "api_model_data.rds"))
+
 # ***********************
 # ---- Clean rosters ----
 # ***********************
