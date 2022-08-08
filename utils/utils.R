@@ -118,6 +118,401 @@ simple_theme <-
     strip.text.y     = element_text(color = "black",face = "bold")
   )
 
+# get upcoming matchups for given week of season
+get_upcoming_game <- function(year, pred_week, post_season = FALSE) {
+  
+  if (year < 2021 & pred_week > 17) {
+    
+    pred_week <- 17
+    
+  } 
+  
+  
+  
+  # If game is a post season game
+  if (post_season == TRUE) {
+    
+    url <- paste0("https://www.espn.com/nfl/schedule/_/week/", pred_week,"/year/", year, "/seasontype/3")
+    
+  } else {
+    
+    url <- paste0("https://www.espn.com/nfl/schedule/_/week/", pred_week,"/year/", year, "/seasontype/2")
+  }
+  
+  logger::log_info("\n\nRetrieving matchups:\nSeason: {year}\nWeek: {pred_week}")
+  
+  # Read HTML page using URL
+  page <- rvest::read_html(url)
+  
+  # Extract HTML nodes for table
+  page_nodes <- 
+    page %>%  
+    rvest::html_nodes("table")
+  
+  # empty list to add to in loop
+  tbl_lst <- list()
+  
+  for (i in 1:length(page_nodes)) {
+    
+    # logger::log_info("table {i} of {length(page_nodes)}")
+    
+    # Extract season games 
+    page_table <- rvest::html_table(
+      page_nodes[[i]],
+      header  = F,
+      fill    = T, 
+      convert = T
+    ) 
+    
+    # if a BYE week table, skip iteration
+    if (page_table[1, 1] == "BYE") {
+      
+      next
+      
+    } else {
+      
+      page_table <- 
+        page_table %>% 
+        dplyr::select(X1, X2) %>% 
+        dplyr::filter(X1 != "matchup") %>% 
+        stats::setNames(c("away_team", "home_team")) %>% 
+        dplyr::mutate(
+          id = 1:n()
+        ) %>% 
+        dplyr::group_by(id) %>% 
+        dplyr::mutate(
+          season    = year,
+          week      = pred_week,
+          away_team = tail(strsplit(away_team, split = " ")[[1]], 1),
+          home_team = tail(strsplit(home_team, split = " ")[[1]], 1),
+          game_id   = dplyr::case_when(
+            week < 10 ~ paste0(year, "_0", week, "_", away_team, "_",  home_team),
+            week >= 10 ~ paste0(year, "_", week, "_", away_team, "_",  home_team)
+          )
+        ) %>% 
+        dplyr::ungroup() %>% 
+        dplyr::select(season, week, game_id, home_team, away_team)
+      
+      
+      tbl_lst[[i]] <- page_table
+    }
+  }
+  
+  # Bind rows of list
+  upcoming_games <- dplyr::bind_rows(tbl_lst)
+  
+  # Replace some team names to match names in  other data
+  upcoming_games$home_team <- gsub("LAR", "LA", upcoming_games$home_team)
+  upcoming_games$away_team <- gsub("LAR", "LA", upcoming_games$away_team)
+  upcoming_games$home_team <- gsub("WSH", "WAS", upcoming_games$home_team)
+  upcoming_games$away_team <- gsub("WSH", "WAS", upcoming_games$away_team)
+  
+  return(upcoming_games)
+  
+}
+
+# scrapes data for the upcoming week matchups (regular season only for now)
+scrape_games <- function(year, pred_week) {
+ 
+  # Check and make sure pred_week is a valid week of season
+  if(pred_week < 2) {
+    
+    # setting week to 2 if pred_week is less than 2
+    logger::log_info("\n\nWeek {pred_week} invalid\nWeek must be within valid week range: 2 - upcoming week\nSetting pred_week = 2")
+    
+    pred_week = 2
+    
+  } else if(year >= 2021 & pred_week > 18) {
+    
+    # setting week to max week after 2020 season (18)
+    logger::log_info("\n\nWeek {pred_week} invalid\nWeek must be within valid week range: 2 - 18\nSetting pred_week = 18")
+    
+    pred_week = 18
+    
+  } else if(year < 2021 & pred_week > 17) {
+    
+    # setting week to max week before 2021 season (17)
+    logger::log_info("\n\nWeek {pred_week} invalid\nWeek must be within valid week range: 2 - 17\nSetting pred_week = 17")
+    
+    pred_week = 17
+    
+  }
+  # if(pred_week < 2) {
+  #   
+  #   logger::log_info("Please enter a week between week 2 and the Superbowl")
+  #   
+  #   pred_week = 2
+  #   
+  # } else if(year < 2021 & pred_week > 21) {
+  #   
+  #   logger::log_info("Please enter a week between 2-21")
+  #   
+  #   pred_week = 21
+  #   
+  # } else if(year >= 2021 & pred_week > 22) {
+  #   
+  #   logger::log_info("Please enter a week between 2-22")
+  #   
+  #   pred_week = 22
+  #   
+  # }
+  
+  # Construct URL
+  url  <- paste0("https://www.pro-football-reference.com/years/", year ,"/games.htm")
+  
+  # Read HTML page using URL
+  page <- rvest::read_html(url)
+  
+  # Extract HTML nodes for table
+  page_nodes <- 
+    page %>%  
+    rvest::html_nodes("table")
+  
+  
+  # Extract season games 
+  page_table <- rvest::html_table(
+    page_nodes[[1]],
+    header  = T,
+    fill    = T, 
+    convert = F
+  ) %>% 
+    janitor::clean_names() %>% 
+    dplyr::mutate(
+      home = case_when(
+        x == ""  ~ 1,
+        x == "@" ~ 0,
+        x == "N" ~ 0
+      )
+    ) 
+  
+  # remove headers for each week
+  page_table <- page_table[!grepl("Week", page_table$week), ]
+  
+  # remove headers break for playoff start 
+  page_table <- page_table[!grepl("Playoffs", page_table$date), ]
+  
+  # Rename playoff columns as weeks, accounting for added game after 2020 season
+  if (year >= 2021) {
+    
+    # If season is after 2020
+    page_table <- 
+      page_table %>% 
+      dplyr::mutate(
+        week = dplyr::case_when(
+          week == "WildCard"  ~ "19",
+          week == "Division"  ~ "20",
+          week == "ConfChamp" ~ "21",
+          week == "SuperBowl" ~ "22",
+          TRUE                ~ week
+        ),
+        week     = as.numeric(week)
+      ) %>% 
+      dplyr::filter(week < pred_week)
+    
+    # Rename playoff columns as weeks, accounting for fewer games before 2021
+  } else {
+    
+    # if season is before 2021
+    page_table <- 
+      page_table %>% 
+      dplyr::mutate(
+        week = dplyr::case_when(
+          week == "WildCard"  ~ "18",
+          week == "Division"  ~ "19",
+          week == "ConfChamp" ~ "20",
+          week == "SuperBowl" ~ "21",
+          TRUE                ~ week
+        ),
+        week     = as.numeric(week)
+      ) %>% 
+      dplyr::filter(week < pred_week)
+  }
+  
+  # parse data tables from Pro Football Reference
+  outcomes <- 
+    page_table %>% 
+    dplyr::left_join(
+      dplyr::select(nfl_teams(), team_name, win_team_abb = team_abb),
+      by = c("winner_tie" = "team_name")
+    ) %>% 
+    dplyr::left_join(
+      dplyr::select(nfl_teams(), team_name, lose_team_abb = team_abb),
+      by = c("loser_tie" = "team_name")
+    ) %>% 
+    dplyr::select(week, date,
+                  win_team  = win_team_abb,
+                  x, 
+                  lose_team = lose_team_abb,
+                  pts_win   = pts,
+                  pts_lose  = pts_2, 
+                  tow, tol)  %>% 
+    dplyr::mutate(
+      home_team = dplyr::case_when(
+        x == ""  ~ win_team,
+        x == "@" ~ lose_team,
+        week == 22 ~ win_team
+      ),
+      away_team = dplyr::case_when(
+        x == ""  ~ lose_team,
+        x == "@" ~ win_team,
+        week == 22 ~ lose_team
+      ),
+      pts_win  = as.numeric(pts_win),
+      pts_lose = as.numeric(pts_lose),
+      game_id  = dplyr::case_when(
+        week < 10 ~ paste0(year, "_0", week, "_", away_team, "_",  home_team),
+        week >= 10 ~ paste0(year, "_", week, "_", away_team, "_",  home_team)
+      )
+    ) %>% 
+    dplyr::select(-x) %>% 
+    dplyr::group_by(game_id) %>% 
+    dplyr::mutate(
+      home_pts = dplyr::case_when(
+        home_team == win_team ~ max(pts_win, pts_lose),
+        home_team != win_team ~ min(pts_win, pts_lose)
+      ),
+      away_pts = dplyr::case_when(
+        home_team == win_team ~ min(pts_win, pts_lose),
+        home_team != win_team ~ max(pts_win, pts_lose)
+      ),
+      home_turnovers = dplyr::case_when(
+        home_team == win_team ~ tow,
+        home_team != win_team ~ tol
+      ),
+      away_turnovers = dplyr::case_when(
+        home_team == win_team ~ tol,
+        home_team != win_team ~ tow
+      ),
+      season = year
+    ) %>% 
+    dplyr::ungroup() %>% 
+    dplyr::select(season, week, game_id, gameday = date, home_team, away_team,
+                  home_score = home_pts, away_score = away_pts,
+                  home_turnovers, away_turnovers) 
+  
+  # calculate win loss percentages
+  record <- get_schedule(outcomes, verbose = FALSE)
+  
+  # Create Score differential, home or away team ID, # of rest days
+  outcomes <- 
+    outcomes %>% 
+    tidyr::pivot_longer(
+      cols      = c(home_team, away_team),
+      names_to  = "home",
+      values_to = "team"
+    ) %>% 
+    dplyr::mutate(
+      home = dplyr::case_when(
+        home == "home_team" ~ 1, 
+        home == "away_team" ~ 0
+      ),
+      score_diff = dplyr::case_when(
+        home == 1 ~ home_score - away_score, 
+        home == 0 ~ away_score - home_score
+      ),
+      home_away  = case_when(
+        home == 1 ~ "home_team",
+        home == 0 ~ "away_team"
+      )
+    ) %>% 
+    dplyr::mutate(
+      split_game_id = substr(game_id, 9, 20)
+    ) %>% 
+    dplyr::mutate(
+      home_team     =  stringr::str_split_fixed(split_game_id, "_", 2)[,2],
+      away_team     =  stringr::str_split_fixed(split_game_id, "_", 2)[,1],
+      opponent      =  dplyr::case_when(
+        home_team == team ~ away_team,
+        away_team == team ~ home_team
+      )
+    ) %>% 
+    dplyr::select(-split_game_id, -home_team, -away_team) %>% 
+    dplyr::group_by(team) %>% 
+    dplyr::arrange(gameday, .by_group = T) %>% 
+    dplyr::mutate(
+      lag_date    = lag(gameday), 
+      rest_days   = as.numeric(round(difftime(gameday, lag_date), 0))
+    ) %>% 
+    dplyr::ungroup() %>% 
+    dplyr::select(-lag_date, -gameday, -home) %>% 
+    replace(is.na(.), 7) %>% 
+    dplyr::relocate(season, week, game_id, team, opponent, home_away, rest_days, score_diff, home_score, away_score) %>% 
+    dplyr::left_join(
+      dplyr::select(record, week, game_id, team, win, win_pct, home_win_pct, away_win_pct),
+      by = c("week", "game_id", "team")
+    )
+
+  # Calculate ELO ratings
+  elo <-  
+    outcomes %>% 
+    dplyr::filter(home_away == "home_team") %>%
+    dplyr::select(season, week, game_id, team, opponent, win, home_score, away_score) %>% 
+    get_nfl_elo()
+ 
+  # Join ELO ratings back w/ outcomes
+  outcomes <- 
+    outcomes %>% 
+    dplyr::left_join(
+      dplyr::select(elo, week, game_id, team, elo),
+      by = c("week", "game_id", "team")
+    ) %>%
+    dplyr::group_by(team) %>% 
+    dplyr::arrange(week, .by_group = TRUE) %>% 
+    dplyr::mutate(
+      turnovers = dplyr::case_when(
+        home_away == "home_team" ~ as.numeric(home_turnovers),
+        home_away == "away_team" ~ as.numeric(away_turnovers)
+      ),
+      turnovers    = mean(turnovers, na.rm = T),
+      score_diff   = mean(score_diff, na.rm = T)
+    ) %>% 
+    dplyr::slice(which.max(week)) %>% 
+    dplyr::select(season, week, game_id, team, opponent, home_away, win, win_pct,
+                  home_win_pct, away_win_pct, rest_days, score_diff, turnovers, elo)  %>% 
+    dplyr::mutate(across(c(win_pct:away_win_pct), round, 4)) %>% 
+    dplyr::ungroup()
+  
+  
+  # Get schedule of upcoming games
+  next_game <- get_upcoming_game(
+    year        = year,
+    pred_week   = pred_week,
+    post_season = FALSE
+  ) 
+  
+  # Upcoming home team stats
+  home <- 
+    next_game %>% 
+    dplyr::left_join(
+      dplyr::select(outcomes, -season, -week, -game_id, -opponent, -home_away, -win),
+      by = c("home_team" = "team")
+    ) 
+  
+  # Upcoming away team stats
+  away <-
+    outcomes %>% 
+    dplyr::filter(team %in% home$away_team) %>% 
+    dplyr::select(-season, -week, -game_id, -opponent, -home_away, -win) %>% 
+    stats::setNames(
+      c("away_team", 
+        paste0("opp_", names(.)[names(.) != "team"])
+      )
+    )
+  
+  # Join Home team and away team stats leading up to upcoming game, used as input into models
+  matchups <-
+    home %>% 
+    dplyr::left_join(
+      away,
+      by = c("away_team")
+    ) %>% 
+    dplyr::relocate(season, week, game_id, team = home_team, opponent = away_team)
+  
+  return(matchups)
+  
+}
+
+# Scrape rushing defense stats from Pro Football Reference
 scrape_pfr <- function(year) {
   
   logger::log_info("\n\nScraping Pro Football Reference...\n{year} Rushing Defense ")
@@ -151,6 +546,7 @@ scrape_pfr <- function(year) {
   
 }
 
+# calculate cumulative mean
 cumulative_mean <- function(x) {
   cummean <- (cumsum(x) / seq_along(x))
   return(cummean)
@@ -167,11 +563,11 @@ mean_na <- function(x) {
 }
 
 
-# takes in NFL fast R play-by-play data and returns a cleaned tibble with game level offensive stats
+# takes in NFL fast R play-by-play data and returns a cleaned tibble with game level offensive stats (version 2)
 get_offense2 <- function(season_pbp) {
 
   logger::log_info("\n\nCalculating {season_pbp$season[1]} offensive stats...")
-  
+
   # Remove overtime, calculate drive time of possession, identify home teams
   season_df <-
     season_pbp %>%
@@ -244,7 +640,7 @@ get_offense2 <- function(season_pbp) {
       which.min(play_id),
       which.max(play_id)
     ) %>% 
-    na.omit() %>%
+    stats::na.omit() %>%
     dplyr::mutate(
       start_end = dplyr::case_when(
         play_id == min(play_id) ~ "start_qtr",
@@ -274,6 +670,24 @@ get_offense2 <- function(season_pbp) {
       pts_scored = qtr_pts_1 + qtr_pts_2 + qtr_pts_3 + qtr_pts_4
     )
   
+  # score differential
+  off_score_diff <- 
+    season_pbp %>% 
+    dplyr::select(game_id, 
+                  home_team, away_team,
+                  posteam, defteam, home_score, away_score) %>% 
+    dplyr::group_by(game_id, posteam) %>% 
+    dplyr::slice(1) %>% 
+    stats::na.omit() %>% 
+    dplyr::ungroup() %>% 
+    dplyr::mutate(
+      score_diff = dplyr::case_when(
+        posteam == home_team ~ home_score - away_score, 
+        posteam == away_team ~ away_score - home_score, 
+      )
+    ) %>% 
+    dplyr::select(game_id, posteam, score_diff)
+  
   # Join all data 
   off_game <-
     off_stats %>% 
@@ -284,6 +698,10 @@ get_offense2 <- function(season_pbp) {
     ) %>% 
     dplyr::left_join(
       off_qtr_points,
+      by = c("game_id", "posteam")
+    )  %>% 
+    dplyr::left_join(
+      off_score_diff,
       by = c("game_id", "posteam")
     )  %>% 
     dplyr::mutate(
@@ -297,27 +715,25 @@ get_offense2 <- function(season_pbp) {
   return(off_game)
 
 }
-# Function takes in Play by play dataset from nflfastR::load_pbp() and tidys --> adds win percentage
+
+# takes in NFL fast R play-by-play data and returns a cleaned tibble with game level offensive stats (version 1)
 get_offense <- function(season_pbp) {
-  # season_pbp <- pbp_stats[[20]]
+
   season_year <-  season_pbp$season[1]
-# season_pbp <- pbp_stats[[23]]
+  
   logger::log_info("\n\nCalculating {season_year} offensive stats...")
 
   # Slice off top row for each game to extract winners/loser
   season_df <-
     season_pbp %>%
-    # pbp %>%    
     dplyr::group_by(game_id, posteam) %>%
     dplyr::ungroup() %>% 
-    # dplyr::relocate(season, game_id, qtr,drive, play_id, play_type, game_seconds_remaining, drive_time_of_possession) %>%
     dplyr::group_by(game_id, qtr, posteam) %>% 
     dplyr::arrange(-game_seconds_remaining, .by_group = T) %>% 
     dplyr::mutate(
       drive_time_of_possession_sec =  
         60*as.numeric(sub(':.*', '', drive_time_of_possession)) + as.numeric(sub('.*:', '', drive_time_of_possession))
     ) %>% 
-    # dplyr::filter(game_id == "2020_13_LA_ARI") %>%
     dplyr::mutate(
       home = dplyr::case_when(
         posteam == home_team ~ 1,
@@ -327,9 +743,6 @@ get_offense <- function(season_pbp) {
     dplyr::ungroup() %>% 
     dplyr::filter(qtr < 5)  %>% 
     dplyr::filter(!posteam == "")
-    # dplyr::relocate(game_id, season, week, home_team, away_team,  home, posteam, defteam, qtr, drive, total_home_score, total_away_score, home_score, away_score, 
-    #                 drive_ended_with_score, drive_time_of_possession_sec, drive_time_of_possession, 
-    #                 third_down_converted, third_down_failed) %>% 
 
   # scores per drive
   off_drive_stats <-
@@ -369,41 +782,13 @@ get_offense <- function(season_pbp) {
     ) %>% 
     dplyr::ungroup()
   
-  # # Quarter time of possession
-  # off_qtr_time_of_poss <-
-  #   season_df %>%
-  #   # dplyr::filter(game_id == "2020_13_LV_NYJ") %>%
-  #   dplyr::select(game_id, qtr, drive, posteam, drive_time_of_possession_sec, score_differential) %>%
-  #   dplyr::group_by(game_id, qtr, drive, posteam) %>%
-  #   dplyr::summarize(
-  #     top                     = mean(drive_time_of_possession_sec,na.rm = T),
-  #     score_differential_mean = mean(score_differential, na.rm = T)
-  #     # score_differential_max = max(score_differential, na.rm = F)
-  #     ) %>%
-  #   dplyr::ungroup() %>%
-  #   # dplyr::group_by(game_id, qtr, posteam) %>%
-  #   dplyr::group_by(game_id, qtr, posteam) %>%
-  #   dplyr::summarize(
-  #     drive_time_of_possession_sec = sum(top, na.rm = T), 
-  #     score_differential_mean = mean(score_differential_mean, na.rm = T)
-  #     ) %>%
-  #   na.omit() %>%
-  #   dplyr::mutate(
-  #     top_pct = drive_time_of_possession_sec/sum(drive_time_of_possession_sec, na.rm = T)
-  #   ) %>%
-  #   dplyr::ungroup()
   # Change in score differential from start to end of quarter
   off_dscore_diff <- 
     season_df %>% 
     dplyr::select(game_id, qtr, drive, play_id, game_seconds_remaining, 
                   posteam, score_differential_post) %>% 
     dplyr::group_by(game_id, qtr, posteam) %>%
-    # dplyr::filter(game_id == "2020_01_MIA_NE") %>%
     dplyr::arrange(drive, .by_group = T) %>% 
-    # dplyr::slice(
-    #   which.max(game_seconds_remaining),
-    #   which.min(game_seconds_remaining)
-    #   ) %>% 
     dplyr::slice(
       which.min(play_id),
       which.max(play_id)
@@ -413,16 +798,11 @@ get_offense <- function(season_pbp) {
       start_end = dplyr::case_when(
         play_id == min(play_id) ~ "start_qtr",
         play_id == max(play_id) ~ "end_qtr"
-        # play_id == play_id ~"end_qtr"
-        # max(game_seconds_remaining) == min(game_seconds_remaining) ~"end_qtr"
       )
     ) %>% 
     dplyr::ungroup() %>%
-    # dplyr::filter(!posteam == "") %>% 
-    # na.omit() %>%
     tidyr::pivot_wider(
       id_cols     = c(game_id, qtr, posteam), 
-      # id_cols     = c(-qtr, -drive,-game_seconds_remaining ), 
       names_from  = "start_end", 
       values_from = "score_differential_post"
       ) %>% 
@@ -440,18 +820,13 @@ get_offense <- function(season_pbp) {
       values_from = value
     ) 
   
-    # dplyr::ungroup() %>% 
-    # dplyr::group_by(game_id, qtr, posteam)
-  
   # Quarter score differential of possession
   off_qtr_score_diff <-
     season_df %>%
     dplyr::select(game_id, qtr, drive, game_seconds_remaining, 
                   posteam, score_differential_post) %>% 
-    # dplyr::group_by(game_id, qtr, posteam) %>% 
     dplyr::group_by(game_id, posteam) %>% 
     dplyr::arrange(drive, .by_group = T) %>%
-    # dplyr::filter(game_id == "2021_01_ARI_TEN") %>%
     dplyr::ungroup() %>% 
     dplyr::group_by(game_id, qtr, posteam) %>%
     dplyr::summarise(
@@ -473,115 +848,14 @@ get_offense <- function(season_pbp) {
     ) %>% 
     dplyr::ungroup()
   
-  # ********************************
-    # dplyr::slice_tail() %>% 
-    # dplyr::slice(
-    #   which.min(score_differential_post), 
-    #   which.max(score_differential_post)
-    #   ) %>% 
-    # na.omit() %>% 
-    # dplyr::ungroup() %>% 
-    # dplyr::group_by(game_id, qtr, posteam) %>%
-    # dplyr::summarize(
-    #   score_diff = mean(score_differential_post, na.rm = T),
-    #   # score_diff = median(score_differential_post, na.rm = T)
-    #   ) %>% 
-    # dplyr::ungroup() %>% 
-    # dplyr::mutate(qtr_name = paste0("qtr_", qtr)) %>%
-    # tidyr::pivot_longer(cols = c(score_diff)) %>%
-    # tidyr::pivot_wider(
-    #   id_cols     = c(game_id, posteam),
-    #   names_from  = c(name, qtr_name),
-    #   names_glue = "{name}_{qtr_name}",
-    #   values_from = value
-    # ) 
-    # ********************************
-  # Quarter time of possession
-  # off_qtr_score_diff <-
-  #   season_df %>%
-  #   dplyr::select(game_id, qtr, posteam, score_differential) %>%
-  #   dplyr::group_by(game_id, qtr, posteam) %>%
-  #   # dplyr::group_by(game_id, qtr,drive, posteam) %>%
-  #   # dplyr::mutate(score_diff = dplyr::case_when(
-  #   #     score_differential > 0 ~ max(score_differential),
-  #   #     score_differential < 0 ~ min(score_differential),
-  #   #     score_differential == 0 ~ 0 ) ) %>% 
-  #   # dplyr::filter(game_id == "2020_13_LV_NYJ") %>%
-  #   dplyr::summarize(
-  #     score_differential = mean(score_differential, na.rm = T)
-  #   ) %>%
-  #   dplyr::ungroup() %>%
-  #   na.omit() %>% 
-  #   dplyr::filter(qtr < 5) %>% 
-  #   dplyr::mutate(qtr_name = paste0("qtr_", qtr)) %>%
-  #   tidyr::pivot_longer(cols = c(score_differential)) %>%
-  #   tidyr::pivot_wider(
-  #     id_cols     = c(game_id, posteam),
-  #     names_from  = c(name, qtr_name),
-  #     names_glue = "{name}_{qtr_name}",
-  #     values_from = value
-  #   ) %>% 
-  #   setNames(c("game_id", "posteam", "score_diff_qtr_1", 
-  #              "score_diff_qtr_2", "score_diff_qtr_3", "score_diff_qtr_4"))
-
-  # Offensive quarter stats
-  # off_qtr_stats <- 
-  #   season_df %>% 
-  #   # dplyr::filter(game_id == "2020_13_LV_NYJ") %>%
-  #   dplyr::group_by(game_id, qtr, posteam) %>% 
-  #   # dplyr::select(game_id, qtr, defteam, qb_epa) %>% 
-  #   dplyr::summarize(
-  #     across(c(touchdown, fumble_lost, interception, third_down_converted, third_down_failed), sum, na.rm = T),
-  #     across(c(score_differential, qb_epa), mean, na.rm = T),
-  #     across(c(home, div_game, drive_ended_with_score, score_differential), max, na.rm = F),
-  #     across(c(score_differential), min, na.rm = F)
-  #   ) %>% 
-  #   dplyr::mutate(
-  #     third_down_pct = third_down_converted/(third_down_converted + third_down_failed),
-  #     turnovers      = fumble_lost + interception
-  #   ) %>% 
-  #   dplyr::ungroup() %>% 
-  #   dplyr::select(-third_down_converted, -third_down_failed, -fumble_lost, -interception, -drive_ended_with_score) %>% 
-  #   dplyr::filter(!is.na(posteam)) %>% 
-  #   dplyr::left_join(
-  #     off_qtr_time_of_poss,
-  #     by = c("game_id", "qtr", "posteam")
-  #   ) %>% 
-  #   dplyr::group_by(game_id, qtr) %>% 
-  #   dplyr::mutate(
-  #     top_pct = drive_time_of_possession_sec/sum(drive_time_of_possession_sec, na.rm = T)
-  #   ) %>% 
-  #   dplyr::ungroup() %>% 
-  #   dplyr::group_by(game_id, posteam) %>% 
-  #   dplyr::arrange(qtr, .by_group = T) %>% 
-  #   dplyr::mutate(qtr_name = paste0("qtr_", qtr)) %>%
-  #   tidyr::pivot_longer(cols = c(touchdown:top_pct)) %>% 
-  #   tidyr::pivot_wider(
-  #     id_cols     = c(game_id, posteam), 
-  #     names_from  = c(name, qtr_name),
-  #     names_glue = "{name}_{qtr_name}_{.value}",
-  #     values_from = value
-  #   ) 
-
   # Offensive quarter stats
   off_stats <- 
     season_df %>% 
-    # dplyr::filter(game_id == "2020_13_LV_NYJ") %>%
     dplyr::group_by(game_id, posteam) %>%
-    # dplyr::summarize(
-    #   across(c(score_differential), mean, na.rm = T, .names = "mean_{.col}"),
-    #   across(c(score_differential), max, na.rm = F, .names = "max_{.col}"),
-    #   across(c(score_differential), min, na.rm = F, .names = "min_{.col}")
-    # ) %>% 
     dplyr::summarize(
       across(c(fumble_lost, interception, third_down_converted, third_down_failed), sum, na.rm = T),
       across(c(qb_epa), mean, na.rm = T),
-      # across(c(score_differential, qb_epa), mean, na.rm = T),
       across(c(home, div_game), max, na.rm = F)
-      # across(c(home, div_game), max, na.rm = F)
-      # across(c(score_differential), min, na.rm = F)
-      # across(c(home, div_game, score_differential), max, na.rm = F),
-      # across(c(score_differential), min, na.rm = F)
     ) %>%
     dplyr::mutate(
       third_down_pct = third_down_converted/(third_down_converted + third_down_failed),
@@ -595,7 +869,6 @@ get_offense <- function(season_pbp) {
   # Quarter stats
   qtr_scores <-   
     season_df %>% 
-    # dplyr::filter(game_id == "2020_13_LV_NYJ") %>%
     dplyr::group_by(game_id, qtr, posteam) %>% 
     dplyr::summarize(
       max_home_score       = max(total_home_score,na.rm = F),
@@ -692,7 +965,6 @@ get_offense <- function(season_pbp) {
         season = as.numeric(substr(game_id, 1, 4)),
         week   = as.numeric(substr(game_id, 6, 7))
         ) %>% 
-      # dplyr::select(-qtr_pts_6) %>% 
       dplyr::relocate(season, week, game_id, posteam, home, div_game, 
                       qtr_pts_1, qtr_pts_2, qtr_pts_3, qtr_pts_4, score_diff,
                       score_diff_qtr_1, score_diff_qtr_2, score_diff_qtr_3, score_diff_qtr_4,
@@ -711,34 +983,18 @@ get_defense <- function(season_pbp) {
   season_year <-  season_pbp$season[1]
   
   logger::log_info("\n\nCalculating {season_year} defensive stats...")
-  
-  # homeaway <- 
-  #   # season_df %>% 
-  #   pbp %>% 
-  #   dplyr::select(game_id, home_team, away_team) %>% 
-  #   dplyr::group_by(game_id) %>% 
-  #   dplyr::slice(1) %>%
-  #   tidyr::pivot_longer(
-  #     cols      = c(home_team, away_team),
-  #     names_to  = "home_away",
-  #     values_to = "team"
-  #   ) %>% 
-  #   dplyr::ungroup()
-  
+
   # Slice off top row for each game to extract winners/loser
   season_df <-
     season_pbp %>%
-    # pbp %>%    
     dplyr::group_by(game_id, posteam) %>%
     dplyr::ungroup() %>% 
-    # dplyr::relocate(season, game_id, qtr,drive, play_id, play_type, game_seconds_remaining, drive_time_of_possession) %>%
     dplyr::group_by(game_id, qtr, posteam) %>% 
     dplyr::arrange(-game_seconds_remaining, .by_group = T) %>% 
     dplyr::mutate(
       drive_time_of_possession_sec =  
         60*as.numeric(sub(':.*', '', drive_time_of_possession)) + as.numeric(sub('.*:', '', drive_time_of_possession))
     ) %>% 
-    # dplyr::filter(game_id == "2020_03_NYJ_IND") %>%
     dplyr::mutate(
       home = dplyr::case_when(
         posteam == home_team ~ 1,
@@ -750,16 +1006,11 @@ get_defense <- function(season_pbp) {
                     third_down_converted, third_down_failed,) %>% 
     dplyr::ungroup() %>% 
     dplyr::filter(qtr < 5)
-  # off_qtr_stats %>% 
-  #   dplyr::filter(posteam == "ARI") %>%
-  #   dplyr::summarise(tot = sum(drive_time_of_possession_sec))
   
   # defensive game stats
   def_stats <- 
     season_df %>% 
-    # dplyr::filter(game_id == "2020_13_LV_NYJ") %>%
     dplyr::group_by(game_id, defteam) %>% 
-    # dplyr::select(game_id, qtr, defteam, qb_epa) %>% 
     dplyr::summarize(
       across(c(fumble_lost, interception, third_down_converted, third_down_failed), sum, na.rm = T),
       across(c(qb_epa), mean, na.rm = T)
@@ -777,12 +1028,10 @@ get_defense <- function(season_pbp) {
   # scores per drive defense pov
   def_drive_stats <-
     season_df %>%
-    # dplyr::filter(game_id == "2020_13_LV_NYJ") %>%
     dplyr::group_by(game_id, qtr, defteam, drive) %>%
     dplyr::summarize(
       drive_ended_with_score  = max(drive_ended_with_score, na.rm = F)
     ) %>%
-    # dplyr::filter(!is.na(defteam)) %>%
     na.omit() %>% 
     dplyr::ungroup() %>% 
     dplyr::group_by(game_id, drive, defteam) %>% 
@@ -802,7 +1051,6 @@ get_defense <- function(season_pbp) {
   # Quarter stats
   qtr_scores <-   
     season_df %>% 
-    # dplyr::filter(game_id == "2020_13_LV_NYJ") %>%
     dplyr::group_by(game_id, qtr, defteam) %>% 
     dplyr::summarize(
       max_home_score       = max(total_home_score,na.rm = F),
@@ -881,7 +1129,6 @@ get_defense <- function(season_pbp) {
       def_qtr_scores,
       by = c("game_id", "defteam")
     ) %>% 
-    # dplyr::select(-def_qtr_pts_5) %>% 
     dplyr::select(-contains("qtr_pts_5"), -contains("qtr_pts_6")) %>% 
     dplyr::mutate(
       season = as.numeric(substr(game_id, 1, 4)),
@@ -892,44 +1139,17 @@ get_defense <- function(season_pbp) {
     dplyr::mutate(across(where(is.numeric), round, 3))
   
   return(def_game)
-
-  # # defensive quarter stats
-  # def_qtr_stats <- 
-  #   season_pbp %>% 
-  #   # dplyr::filter(game_id == "2020_13_LV_NYJ") %>%
-  #   dplyr::group_by(game_id, qtr, defteam) %>% 
-  #   # dplyr::select(game_id, qtr, defteam, qb_epa) %>% 
-  #   dplyr::summarize(
-  #     across(c(fumble_lost, interception, third_down_converted, third_down_failed), sum, na.rm = T),
-  #     across(c(qb_epa), mean, na.rm = T)
-  #   ) %>% 
-  #   dplyr::mutate(
-  #     third_down_pct = third_down_converted/(third_down_converted + third_down_failed),
-  #     turnovers      = fumble_lost + interception
-  #   ) %>% 
-  #   dplyr::ungroup() %>% 
-  #   na.omit() %>% 
-  #   dplyr::select(-fumble_lost, -interception, -third_down_converted, -third_down_failed) %>% 
-  #   dplyr::group_by(game_id, defteam) %>% 
-  #   dplyr::arrange(qtr, .by_group = T) %>% 
-  #   dplyr::mutate(qtr_name = paste0("def_qtr_", qtr)) %>%
-  #   tidyr::pivot_longer(cols = c(qb_epa:turnovers)) %>% 
-  #   tidyr::pivot_wider(
-  #     id_cols     = c(game_id, defteam), 
-  #     names_from  = c(name, qtr_name),
-  #     names_glue = "{name}_{qtr_name}_{.value}",
-  #     values_from = value
-  #   ) 
   
 }
 
 # Calculate win %s, home and away win pct
-get_schedule <- function(df) { 
+get_schedule <- function(df, verbose = TRUE) { 
  
-
-  logger::log_info("\n\nGenerating home/win totals and % ...")
-  
-  # df <- schedule
+  # Enable log messages 
+  if(verbose == TRUE) {
+    logger::log_info("\n\nGenerating home/win totals and win % ...")
+  }
+ 
   sched <- 
     df %>% 
     tidyr::pivot_longer(
@@ -1054,111 +1274,23 @@ get_schedule <- function(df) {
   
   return(wins)
   
-    # dplyr::group_by(team, home_away) %>% 
-    # dplyr::mutate(
-    #   ngames = 1:n(), 
-    #   home_win = dplyr::case_when(
-    #     home_away == "home_team" & win == 1 ~ 1,
-    #     # home_away == "away_team" ~ 1,
-    #     TRUE ~ 0
-    #   ),
-    #   away_win = dplyr::case_when(
-    #     home_away == "away_team" & win == 1 ~ 1,
-    #     # home_away == "home_team" ~ 1,
-    #     TRUE ~ 0
-    #   )
-    # ) %>% 
-    # dplyr::ungroup() %>% 
-    # # dplyr::filter(team == "IND") %>%
-    # # dplyr::select(season, team, home_away, week, ngames, home_win, away_win) %>% 
-    # tidyr::pivot_wider(
-    #   names_from  = "home_away",
-    #   values_from = c(home_win)
-    #   ) %>% 
-    # replace(is.na(.), 0)  %>% 
-    # dplyr::ungroup() %>% 
-    # dplyr::group_by(season, team)  %>% 
-    # # dplyr::arrange(week, .by_group = T) %>% 
-    # dplyr::mutate(
-    #   home_wins = cumsum(home_team),
-    #   away_wins = cumsum(away_team)
-    # ) %>% 
-    # dplyr::ungroup() %>% 
-    # dplyr::left_join(
-    #   dplyr::select(sched, season, week, team, home_away),
-    #   by = c("season", "week", "team")
-    # )
-  
-  # Home game win pct %
-
-  # %>% 
-  #   dplyr::group_by(season, team, home_away) %>% 
-  #   dplyr::arrange(week, .by_group = T) %>% 
-  #   dplyr::mutate(
-  #  home_win_pct = home_wins/ngames,
-  #  away_win_pct = away_wins/ngames
-  #     # home_win_total = sum(home_team, na.rm = T),
-  #     # away_win_total = sum(away_team, na.rm = T)
-  #   )
-  
-    # dplyr::group_by(team, home_away) %>% 
-    # dplyr::arrange(week, .by_group = T) %>% 
-    # dplyr::mutate(
-    #   home_win_total = cumsum(home_win),
-    #   away_win_total = cumsum(away_win)
-    #   # home_win_pct   = home_win_total/ngames,
-    #   # away_win_pct   = away_win_total/ngames
-    # ) %>% 
-    # dplyr::ungroup() %>% 
-    # dplyr::group_by(team) %>% 
-    # dplyr::arrange(week, .by_group = T) %>% 
-    # dplyr::mutate(
-    #   home_win_total = cumsum(home_win),
-    #   away_win_total = cumsum(away_win),
-    #   home_win_total2 = dplyr::case_when(
-    #     home_away == "away_team" ~ lag(home_win_total),
-    #     TRUE ~home_win_total
-    #   )
-    #   ) %>% 
-    # dplyr::ungroup() %>% 
-    # dplyr::group_by(team, home_away) %>% 
-    # dplyr::arrange(week, .by_group = T) %>% 
-    # dplyr::mutate(
-    #   home_win_pct   = home_win_total/ngames,
-    #   away_win_pct   = away_win_total/ngames
-    # ) 
-  
-
-    # wins_df %>% 
-    # dplyr::group_by(team, home_away) %>% 
-    # dplyr::mutate(
-    #   ngames = 1:n(), 
-    #   home_win = dplyr::case_when(
-    #     home_away == "home_team" & win == 1 ~ 1,
-    #     TRUE ~ 0
-    #   ),
-    #   away_win = dplyr::case_when(
-    #     home_away == "away_team" & win == 1 ~ 1,
-    #     TRUE ~ 0
-    #   )
-    # ) %>% 
-    # dplyr::ungroup() %>% 
-    # dplyr::filter(team == "IND") %>% 
-    # dplyr::group_by(team, home_away) %>% 
-    # dplyr::arrange(week, .by_group = T) %>% 
-    # dplyr::mutate(
-    #   home_win_total = cumsum(home_win),
-    #   away_win_total = cumsum(away_win),
-    #   home_win_pct   = home_win_total/ngames,
-    #   away_win_pct   = away_win_total/ngames
-    # ) %>% 
-    # dplyr::ungroup() %>% 
-    # dplyr::select(game_id, season, week, team, home_away, win, home_win, away_win,  win_pct, home_win_pct,away_win_pct) %>% 
-    # dplyr::mutate(across(where(is.numeric), round, 3))
-  
-  # return(wins_df)
 }
+rolling_score <- function(df) {
+  
+  logger::log_info("\n\nCalculating offensive cumulative  averages...\nSeasons: {min(df$season)} - {max(df$season)}")
 
+  lag_off <- 
+    df %>%
+    dplyr::group_by(season, posteam) %>% 
+    dplyr::arrange(season, week, .by_group = T) %>% 
+    dplyr::mutate(
+      across(c(turnovers:score_diff), ~dplyr::lag(dplyr::cummean(.x)))
+    ) %>% 
+    dplyr::mutate(across(c(turnovers:score_diff), round, 3)) %>% 
+    dplyr::ungroup()
+  
+  return(lag_off)
+}
 rolling_offense <- function(df) {
 
   logger::log_info("\n\nCalculating offensive cumulative  averages...\nSeasons: {min(df$season)} - {max(df$season)}")
@@ -1455,47 +1587,35 @@ get_nfl_elo <- function(nfl_season) {
   
 }
 
+# lagged elo rating
 rolling_elo <- function(df) {
   
   logger::log_info("\n\nCalculating elo lag...\nSeasons: {min(df$season)} - {max(df$season)}")
-  # df <- nfl_elo
-  # rm(lag_elo, df)
   lag_elo <- 
     df %>%
-    # team_records %>%
-    # dplyr::filter(season %in% c(2019, 2020)) %>%
-    # dplyr::select(season, week, game_id, posteam, home,  third_down_pct,     turnovers) %>%
     dplyr::group_by(season, team) %>%
-    # dplyr::group_by(season) %>% 
     dplyr::arrange(season, week, .by_group = T) %>% 
     dplyr::mutate(
-      # across(c(win_pct:away_win_pct), ~dplyr::lag(dplyr::cummean(.x)),
       across(c(elo), ~dplyr::lag(.x))
-      # .names = "mean_{.col}")
-      # across(c(qtr_pts_1:qtr_pts_4), ~dplyr::lag( cumsum(.x)),  .names = "sum_{.col}"),
     ) %>% 
     dplyr::mutate(across(c(elo), round, 4)) %>% 
     dplyr::ungroup()
   
   return(lag_elo)
 }
+
+# lagged rolling average spread
 rolling_spread <- function(df) {
   
   logger::log_info("\n\nCalculating win % cumulative averages...\nSeasons: {min(df$season)} - {max(df$season)}")
   # df <- game_spreads
   lag_spread <- 
     df %>%
-    # team_records %>%
-    # dplyr::filter(season %in% c(2019, 2020)) %>%
-    # dplyr::select(season, week, game_id, posteam, home,  third_down_pct,     turnovers) %>%
     dplyr::group_by(season, team) %>% 
     dplyr::arrange(season, week, .by_group = T) %>% 
     dplyr::mutate(
-      # across(c(win_pct:away_win_pct), ~dplyr::lag(dplyr::cummean(.x)),
       across(c(win_pct:away_win_pct), ~dplyr::lag(.x)),
       across(c(spread), ~dplyr::lag(dplyr::cummean(.x)), .names = "{col}_lag")
-      # .names = "mean_{.col}")
-      # across(c(qtr_pts_1:qtr_pts_4), ~dplyr::lag( cumsum(.x)),  .names = "sum_{.col}"),
     ) %>% 
     dplyr::mutate(across(c(spread, win_pct:away_win_pct), round, 4)) %>% 
     dplyr::ungroup()

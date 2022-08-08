@@ -19,14 +19,14 @@ data_path  <-  here::here("data")
 # *******************
 
 # Load entire dataset
-model_dat <- readRDS(here::here("data", "football_wins_lag_elo.rds")) 
+model_dat <- readRDS(here::here("data", "api_model_data.rds")) 
 
 # Modeling subset
 nfl_df <-
   model_dat  %>% 
   dplyr::filter(home == 1) %>% 
   # dplyr::filter(season != 2021, home == 1) %>% 
-  dplyr::select(-abs_spread_line, -home, -home_fav, -fav, -spread_line, -div_game) %>% 
+  # dplyr::select(-abs_spread_line, -home, -home_fav, -fav, -spread_line, -div_game) %>% 
   dplyr::select(season, week, game_id, team, opponent, win, rest_days, 
                 opp_rest_days, elo, opp_elo, score_diff, 
                 opp_score_diff, turnovers, opp_turnovers,

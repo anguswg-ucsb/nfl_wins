@@ -1,5 +1,5 @@
 # Angus Watters 
-# Aggregate and clean data from nflFastR
+# Aggregate and clean data from using NFL play-by-play data from nflFastR
 
 rm(list = ls())
 
@@ -23,20 +23,13 @@ data_path  <-  here::here("data")
 # Exploratory Data Analysis
 # NFL Data from nflFastR
 
-# Question 1: what QB stats most influence W/L
-# Question 2: Factors that influence whether a RB will finish in top 5 on a week?
-# Team Win %
-# Height
-# Weight
-# Snap % # Data dictionary
+# Question 1: what stats relate to teams winning?
+# Question 2: Can we predict whether or not a home team will win their game?
+
 desc <- nflfastR::field_descriptions
 
 # unique seasons
 seasons_lst <- 1999:2021
-# % RB carries
-# Yards per route run 
-# Yard per carry
-# Number of top 5 finishes so far
 
 # **********************
 # ---- Player stats ----
@@ -46,6 +39,9 @@ seasons_lst <- 1999:2021
 # ******************
 # ---- Team pbp ----
 # ******************
+
+# Clear cache if needed
+# nflreadr::.clear_cache()
 
 # load QB stats and calculate game EPA, cumalitve EPA, EPA per play
 pbp_stats <- lapply(seasons_lst, FUN = function(x) {
@@ -62,45 +58,23 @@ pbp_stats <- lapply(seasons_lst, FUN = function(x) {
 # ******************************
 # ---- Team offensive stats ----
 # ******************************
-# rm(offense)
-# season_pbp <- pbp_stats[[1]]
-# load QB stats and calculate game EPA, cumalitve EPA, EPA per play
+
+# calculate overall team offensive statistics from NFL play-by-play data
 off_stats <- lapply(pbp_stats, FUN = function(x) {
   
   offense <- get_offense(x)
   }
 ) 
 
-# rm(season_df, season_pbp, offense, first_qtr, off_df2, off_qtr_score_diff, off_drive_stats, off_game, off_qtr_scores, off_time_of_poss, off_stats, qtr_scores, off_dscore_diff)
 off_df <- dplyr::bind_rows(off_stats)
-# off_df2 <- readRDS(here::here("data", "offensive.rds"))
 
 saveRDS(off_df, here::here("data", "offensive.rds"))
 
-tmp <- 
-  off_df %>% 
-  dplyr::filter(season == 2020) %>% 
-  dplyr::group_by(season, week) %>% 
-  dplyr::select(season:div_game, qb_epa) %>% 
-  dplyr::mutate(
-    qb_epa_mean = mean(qb_epa, na.rm = T),
-    qb_epa_normal = qb_epa - qb_epa_mean
-  ) %>% 
-  dplyr::ungroup() %>% 
-  dplyr::group_by(season, posteam) %>% 
-  dplyr::mutate(
-    season_qb_epa = mean(qb_epa, na.rm = T),
-    season_qb_epa_normal = mean(qb_epa_normal, na.rm = T)
-  )
-ggplot() +
-  geom_boxplot(data = tmp, aes(x = reorder(posteam, season_qb_epa_normal), y = qb_epa_normal))
-  # geom_boxplot(data = tmp, aes(x = reorder(posteam, season_qb_epa), y = qb_epa))
-tmp
 # ******************************
 # ---- Team defensive stats ----
 # ******************************
-# season_pbp <- pbp_stats[[14]]
-# load QB stats and calculate game EPA, cumalitve EPA, EPA per play
+
+# calculate overall team defensive statistics from NFL play-by-play data
 def_stats <- lapply(pbp_stats, FUN = function(x) {
   
   defense <- get_defense(x)
@@ -141,8 +115,6 @@ nfl_split <-
   dplyr::group_by(season) %>% 
   dplyr::group_split()
 
-# elo_r <- nfl_split[[3]] %>% get_nfl_elo()
-
 # pull rosters for every year
 nfl_elo <- lapply(nfl_split, FUN = function(x) {
   
@@ -178,7 +150,7 @@ game_spreads <- readRDS(here::here("data", "closing_spread_lines.rds"))
 # Elo ratings
 nfl_elo      <- readRDS(here::here("data", "elo_ratings.rds"))
 
-# Join offense, defense, records
+# Join home team offense, defense, records
 off_def_data <- 
   team_records %>% 
   dplyr::select(season, week, game_id, team, opponent, rest_days,
@@ -199,6 +171,8 @@ off_def_data <-
     dplyr::select(nfl_elo, -win),
     by = c("season", "week", "game_id", "team")
   ) 
+
+# Join away team offense, defense, records
 opp_off_def_data <- 
   team_records %>% 
   dplyr::select(season, week, game_id, team, opponent, rest_days,
@@ -284,6 +258,7 @@ lag_record   <- rolling_record(team_records)
 # cumalative win %
 lag_elo   <- rolling_elo(nfl_elo)
 
+# lagged data from home team POV
 lag_data <- 
   lag_record %>% 
   dplyr::select(season, week, game_id, team, opponent, rest_days, win_pct, home_win_pct, away_win_pct, win) %>% 
@@ -304,6 +279,7 @@ lag_data <-
     by = c("game_id", "team")
   )
 
+# lagged data from away team POV
 opp_lag_data <- 
   lag_record %>% 
   dplyr::select(season, week, game_id, team, opponent, rest_days, win_pct, home_win_pct, away_win_pct, win) %>% 
@@ -322,8 +298,6 @@ opp_lag_data <-
   setNames(c("season", "week", "game_id", "team", "opponent", paste0("opp_", names(.)[6:44]))) %>%
   dplyr::select(-team)
 
-sort(unique(final_lag_data$rest_days))
-sort(unique(final_lag_data$opp_rest_days))
 final_lag_data <- 
   lag_data %>% 
   dplyr::left_join(
@@ -410,19 +384,188 @@ final_lag_data %>%
     n_sum = sum(n, na.rm = T),
     pct   = round(100*(n/n_sum), 3)
   )
+
 hist(final_lag_data$rest_days, breaks = 20)
 
 saveRDS(final_lag_data, here::here("data", "football_wins_lag_elo.rds"))
 
-# bits_to_dec <- function(bitty) {
-#   bitty <- 15
-#   # Step 1 divide integer by 2, track quotient and remainder
-#   quot  <- 15/2 
-#   rem   <- 15 %% 2
-#   
-#   quot2 <- quot/2
-#   rem2  <- quot %% 2
-# }
+# ********************************
+# ---- Get Data for API model ----
+# ********************************
+
+# Data for model to be used in API (less variables used than first modeling approach)
+
+# Check if api_offense.rds file exists, if not, go get it 
+if(file.exists(here::here("data", "api_offense.rds"))) {
+  logger::log_info("\n\nReading: api_offense.rds")
+  off_df <- readRDS(here::here("data", "api_offense.rds"))
+  
+} else {
+  
+  logger::log_info("\n\nCould not find api_offense.rds\nRetreiving offense data")
+  
+  # calculate overall team offensive statistics from NFL play-by-play data
+  off_stats <- lapply(pbp_stats, FUN = function(x) {
+    
+    offense <- get_offense2(x)
+  }
+  ) 
+  
+  # select desired columns
+  off_df <-
+    off_stats %>% 
+    dplyr::bind_rows() %>% 
+    dplyr::select(season, week, game_id, posteam, home, div_game, turnovers, score_diff)
+  
+  # Save
+  saveRDS(off_df, here::here("data", "api_offense.rds"))
+}
+
+# Check if api_offense.rds file exists, if not, go get it 
+if(file.exists(here::here("data", "wins.rds"))) {
+ 
+  logger::log_info("\n\nReading: wins.rds")
+  team_records <- readRDS(here::here("data", "wins.rds"))
+  
+  if(file.exists(here::here("data", "elo_ratings.rds"))) {
+    
+    logger::log_info("\n\nReading: elo_ratings.rds")
+    
+    nfl_elo <- readRDS(here::here("data", "elo_ratings.rds"))
+    
+  } else {
+    logger::log_info("\n\nCould not find elo_ratings.rds\nCalculating Elo Ratings...")
+    
+    # Split team records data by season
+    nfl_split <- 
+      team_records %>% 
+      dplyr::filter(home_away == "home_team") %>%
+      dplyr::select(season, week, game_id, team, opponent, win, home_score, away_score) %>% 
+      dplyr::group_by(season) %>% 
+      dplyr::group_split()
+    
+    # calculate Elo ratings for all years
+    nfl_elo <- lapply(nfl_split, FUN = function(x) {
+      
+      elo_rating <- get_nfl_elo(x)
+      
+    }
+    ) %>%
+      dplyr::bind_rows()
+    
+    logger::log_info("\n\nSaving: data/elo_ratings.rds")
+    
+    # save Elo
+    saveRDS(nfl_elo, here::here("data", "elo_ratings.rds"))
+  }
+
+} else {
+  
+  logger::log_info("\n\nCould not find team_records.rds\nRetrieving records...")
+  
+  # pull team schedule/records for all seasons
+  team_records <- lapply(seasons_lst, FUN = function(x) {
+    
+    logger::log_info("Season PBP: {x}")
+    
+    schedule <- nflfastR::fast_scraper_schedules(x) %>%
+      get_schedule()
+  }
+  ) %>%
+    dplyr::bind_rows()
+  
+  logger::log_info("\n\nSaving: data/wins.rds")
+  
+  # save records
+  saveRDS(team_records, here::here("data", "wins.rds"))
+  
+  logger::log_info("\n\nCalculating Elo Ratings...")
+  
+  # Split team records data by season
+  nfl_split <- 
+    team_records %>% 
+    dplyr::filter(home_away == "home_team") %>%
+    dplyr::select(season, week, game_id, team, opponent, win, home_score, away_score) %>% 
+    dplyr::group_by(season) %>% 
+    dplyr::group_split()
+  
+  # calculate Elo ratings for all years
+  nfl_elo <- lapply(nfl_split, FUN = function(x) {
+    
+    elo_rating <- get_nfl_elo(x)
+    
+  }
+  ) %>%
+    dplyr::bind_rows()
+  
+  logger::log_info("\n\nSaving: data/elo_ratings.rds")
+  
+  # save Elo
+  saveRDS(nfl_elo, here::here("data", "elo_ratings.rds"))
+}
+
+# **********************
+# ---- API Lag data ----
+# **********************
+
+# cumalative offense
+lag_off      <- rolling_score(off_df)
+
+# cumalative win %
+lag_record   <- rolling_record(team_records)
+
+# cumalative win %
+lag_elo   <- rolling_elo(nfl_elo)
+
+# ******************************
+# ---- API Join lagged data ----
+# ******************************
+
+# lagged data from home team POV
+lag_data <- 
+  lag_record %>% 
+  dplyr::select(season, week, game_id, team, opponent, rest_days, win_pct, home_win_pct, away_win_pct, win) %>% 
+  dplyr::left_join(
+    lag_off,
+    by = c("season", "week", "game_id", "team" = "posteam")
+  ) %>% 
+  dplyr::left_join(
+    dplyr::select(lag_elo, game_id, team, elo),
+    by = c("game_id", "team")
+  )
+
+# lagged data from away team POV
+opp_lag_data <- 
+  lag_record %>% 
+  dplyr::select(season, week, game_id, team, opponent, rest_days, win_pct, home_win_pct, away_win_pct, win) %>% 
+  dplyr::left_join(
+    lag_off,
+    by = c("season", "week", "game_id", "team" = "posteam")
+  ) %>% 
+  dplyr::left_join(
+    dplyr::select(lag_elo, game_id, team, elo),
+    by = c("game_id", "team")
+  ) %>% 
+  setNames(c("season", "week", "game_id", "team", "opponent", paste0("opp_", names(.)[6:44]))) %>%
+  dplyr::select(-team)
+
+# final join of data for modeling (API model)
+final_lag_data <- 
+  lag_data %>% 
+  dplyr::left_join(
+    opp_lag_data,
+    by = c("season", "week", "game_id", "team" = "opponent")
+  ) %>% 
+  dplyr::select(-opp_win, -opp_home, -opp_div_game, -div_game) %>% 
+  dplyr::mutate(
+    win  = factor(win, levels = c(1, 0)),
+    home = factor(home, levels = c(1, 0))
+  ) %>% 
+  dplyr::relocate(season, week, game_id, team, opponent, win, win_pct, home_win_pct, away_win_pct, home) %>% 
+  na.omit() 
+
+# save
+saveRDS(final_lag_data, here::here("data", "api_model_data.rds"))
 # ***********************
 # ---- Clean rosters ----
 # ***********************
