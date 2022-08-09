@@ -18,16 +18,22 @@ library(plumber)
 library(vetiver)
 
 source("utils/utils.R")
+
 # *******************
 # ---- Load Data ----
 # *******************
-rm(nfl_df)
+
+#* Echo back the input
+#* @param msg The message to echo
+#* @get /echo
+function(msg="") {
+  list(msg = paste0("The message is: '", msg, "'"))
+}
 
 # Modeling data
 nfl_df <-
-  readRDS(here::here("data", "football_wins_lag_elo.rds")) %>% 
+  readRDS(here::here("data", "api_model_data.rds")) %>% 
   dplyr::filter(home == 1) %>% 
-  dplyr::select(-abs_spread_line, -home, -home_fav, -fav, -spread_line, -div_game) %>% 
   dplyr::select(season, week, game_id, team, opponent, rest_days, 
                 opp_rest_days, elo, opp_elo, score_diff, 
                 opp_score_diff, turnovers, opp_turnovers,
@@ -39,12 +45,18 @@ nfl_df <-
 
 new_data <- scrape_games(
   year      = 2021, 
-  pred_week = 18
+  pred_week = 14
   ) 
-  # dplyr::select(
-  #   order(colnames(.))
-  #   )
 
+# Paths to models
+log_reg_path <- paste("D:", "nfl", "api_classification", "fit", "win_model_logistic_reg.rds", sep = "/")
+svm_path     <- paste("D:", "nfl", "api_classification", "fit", "win_model_svm_linear.rds", sep = "/")
+
+# read in models
+log_reg_model <- readRDS(log_reg_path)
+svm_model     <- readRDS(svm_path)
+
+pred <- augment(log_reg_model, new_data)
 tmp <- 
   nfl_df %>% 
   dplyr::filter(season == 2021, week == 18) %>% 
@@ -58,6 +70,7 @@ names(new_data) %in% names(nfl_df)
 names(nfl_df) %in% names(new_data)
 glimpse(nfl_df)
 glimpse(new_data)
+
 # Paths to models
 log_reg_path <- paste("D:", "nfl", "api_classification", "fit", "win_model_logistic_reg.rds", sep = "/")
 svm_path     <- paste("D:", "nfl", "api_classification", "fit", "win_model_svm_linear.rds", sep = "/")
