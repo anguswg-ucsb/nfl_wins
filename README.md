@@ -7,14 +7,9 @@ output: github_document
 # **NFL Win Predictions using Machine Learning**
 ##### This repository houses scripts and utility functions used for cleaning, aggregating and manipulating NFL play-by-play data. The resulting aggregated data is then fed into a machine learning model workflow that attempts to predict the winners of NFL games. The raw NFL play-by-play data is obtained using the `nflfastR` package. All of the in-house functions mentioned throughout this document are located in the `utils.R` script in the `utils/` directory of this repo.
 
-<style>
-div.blue { background-color:#e6f0ff; border-radius: 5px; padding: 20px;}
-</style>
-<div class = "blue">
+<br>
 
-<h5>For a detailed write up of the modeling process and results go [here](https://anguswg-ucsb.github.io/nfl_wins/). This README just highlights the data ingestion steps to get the necessary features and data in a model-ready format.</h5>
-
-</div>
+##### For a detailed write up of the modeling process and results go [here](https://anguswg-ucsb.github.io/nfl_wins/).This README just highlights the data ingestion steps to get the necessary features and data in a model-ready format.
 
 
 
