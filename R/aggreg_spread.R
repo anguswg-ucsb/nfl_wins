@@ -11,9 +11,139 @@ library(nflfastR)
 library(timetk)
 
 source("utils/utils.R")
+raw_url <- "https://site.api.espn.com/apis/v2/sports/football/nfl/standings"
 
+request <- httr::GET(
+  raw_url,
+  query = list(
+    season = 2022
+  )
+)
+library(tidyverse)
+resp <- httr::content(request, as = "text", encoding = "UTF-8")
+raw_standings <- jsonlite::parse_json(resp)
+
+names_fix <- tibble(
+  type = c(
+    "playoffseed",
+    "wins",
+    "losses",
+    "winpercent",
+    "gamesbehind",
+    "ties",
+    "pointsfor",
+    "pointsagainst",
+    "differential",
+    "streak",
+    "clincher",
+    "divisionrecord",
+    "divisionwins",
+    "divisionties",
+    "divisionlosses",
+    "total",
+    "home",
+    "road",
+    "vsdiv",
+    "vsconf"
+  ),
+  abb = c(
+    "seed",
+    "wins",
+    "losses",
+    "win_pct",
+    "g_behind",
+    "ties",
+    "pts_for",
+    "pts_against",
+    "pts_diff",
+    "streak",
+    "div_clincher",
+    "record_div",
+    "div_wins",
+    "div_ties",
+    "div_losses",
+    "record",
+    "record_home",
+    "record_away",
+    "record_div",
+    "record_conf"
+  )
+)
+
+full_stand <- raw_standings[["children"]] %>%
+  tibble(data = .) %>%
+  unnest_wider(data) %>%
+  select(conf = abbreviation, standings) %>%
+  unnest_wider(standings) %>%
+  unnest_longer(entries) %>%
+  unnest_wider(entries) %>%
+  select(conf, season, team, stats) %>%
+  unnest_wider(team) %>%
+  hoist(logos, team_logo = list(1, "href")) %>%
+  select(
+    conf,
+    season,
+    team_id = id,
+    team_location = location,
+    team_name = name,
+    team_abb = abbreviation,
+    team_full = displayName,
+    team_logo,
+    stats
+  ) %>%
+  unnest_longer(stats) %>%
+  unnest_wider(stats) %>%
+  mutate(value = as.character(value)) %>%
+  mutate(value = if_else(is.na(value), displayValue, value)) %>%
+  select(conf:team_logo, type, value) %>%
+  left_join(names_fix, by = "type") %>%
+  filter(!(abb == "record_div" & str_length(value) < 2)) %>%
+  filter(!is.na(abb), abb != "NA") %>%
+  filter(abb != "div_clincher") %>%
+  select(-type) %>%
+  pivot_wider(
+    names_from = abb,
+    values_from = value,
+    id_cols = conf:team_logo
+  ) %>%
+  separate(record_home, c("home_wins", "home_losses"), convert = TRUE, extra = "drop") %>%
+  separate(record_away, c("away_wins", "away_losses"), convert = TRUE, extra = "drop") %>%
+  separate(record_div, c("div_wins", "div_losses"), convert = TRUE, extra = "drop") %>%
+  separate(record_conf, c("conf_wins", "conf_losses"), convert = TRUE, extra = "drop") %>%
+  mutate(across(c(seed:div_losses, -record), as.double)) %>%
+  group_by(conf) %>%
+  arrange(conf, desc(win_pct), g_behind) %>%
+  mutate(seed = row_number()) %>%
+  ungroup()
+
+full_stand
+full_stand <- raw_standings[["children"]] %>%
+  tibble::tibble(data = .)
+stop(
+  sprintf(
+    "ESPN API request failed [%s]\n%s\n<%s>",
+    httr::status_code(resp),
+    parsed$message,
+    parsed$documentation_url
+  ),
+  call. = FALSE
+)
 data_path  <-  here::here("data")
-
+remotes::install_github("jthomasmock/espnscrapeR")
+nflreadr::load_pbp(2022)
+library(espnscrapeR)
+sched <- get_nfl_standings(2021)
+sched <- espnscrapeR::get_nfl_schedule(2021)
+sched2 <- sched %>% 
+  dplyr::filter(season == 2021)
+bs_lst <- list()
+for (i in 1:nrow(sched2)) {
+  logger::log_info("{i}")
+  bs <- espnscrapeR::get_nfl_boxscore(sched2$game_id[i])
+  bs_lst[[i]] <- bs
+}
+tm <- espnscrapeR::get_nfl_boxscore(sched2$game_id)
+dict <- nflreadr::dictionary_pbp()
 # ********************
 # ---- NFL Fast R ----
 # ********************

@@ -564,7 +564,7 @@ mean_na <- function(x) {
 
 
 # takes in NFL fast R play-by-play data and returns a cleaned tibble with game level offensive stats (version 2)
-get_offense2 <- function(season_pbp) {
+get_offense <- function(season_pbp) {
 
   logger::log_info("\n\nCalculating {season_pbp$season[1]} offensive stats...")
 
@@ -717,7 +717,7 @@ get_offense2 <- function(season_pbp) {
 }
 
 # takes in NFL fast R play-by-play data and returns a cleaned tibble with game level offensive stats (version 1)
-get_offense <- function(season_pbp) {
+aggreg_games <- function(season_pbp) {
 
   season_year <-  season_pbp$season[1]
   
@@ -1622,6 +1622,7 @@ rolling_spread <- function(df) {
   
   return(lag_spread)
 }
+
 # Function takes in Play by play dataset from nflfastR::load_pbp() and tidys --> adds win percentage
 get_win_pct <- function(season_pbp) {
 

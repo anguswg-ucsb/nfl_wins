@@ -1,0 +1,265 @@
+# **NFL Win Predictions using Machine Learning**
+##### This repository houses scripts and functions used for cleaning, aggregating and manipulating, NFL play-by-play data to feed into machine learning models that attempt to predict the winners of NFL games. The data used in modeling was obtained using the `nflfastR` package. All of the in-house functions mentioned below are located in the `utils.R` script in the `utils/` directory of this repo.
+
+<style>
+div.blue { background-color:#e6f0ff; border-radius: 5px; padding: 20px;}
+</style>
+<div class = "blue">
+
+<h5>For a detailed write up of the modeling process and results go [here](https://anguswg-ucsb.github.io/nfl_wins/). This README just highlights the data ingestion steps to get the necessary features and data in a model-ready format.</h5>
+
+</div>
+
+```{r, eval = TRUE, echo = FALSE, message=FALSE, warning=FALSE}
+library(rmarkdown)
+library(knitr)
+library(ggplot2)
+library(dplyr)
+library(nflfastR)
+
+source("utils/utils.R")
+
+# aggregated game data
+game_stats   <- readRDS(here::here("data", "offensive.rds"))
+
+# Team records
+team_records <-  readRDS(here::here("data", "wins.rds"))
+
+# Elo rating
+nfl_elo      <- readRDS(here::here("data", "elo_ratings.rds"))
+
+# final model data 
+model_data   <- readRDS(here::here("data", "readme_model_data.rds"))
+```
+
+<br>
+
+## **Data ingest**
+##### The starting data used in this repo comes from the outputs of the `nflfastR::load_pbp` and `nflfastR::fast_scraper_schedules()` functions, so many thanks to the people at [nflfastR](https://www.nflfastr.com/index.html)
+
+<br>
+
+### **Play-by-play data** 
+
+##### First, we need a vector of the years of NFL seasons that we want to get data for
+```{r, eval = TRUE, echo = TRUE}
+# unique seasons
+seasons_lst <- 1999:2021
+```
+
+<br>
+
+##### Using `lapply()`, We extract play-by-play data for each season in **season_lst**, and send the this data to `aggreg_games()`. The `aggreg_games()` function, takes the play-by-play data output from `nflfastR::load_pbp` and summarize the play-by-play level data into game level data.
+```{r, eval = FALSE, echo = TRUE}
+# unique seasons
+seasons_lst <- 1999:2021
+
+# Retrieve team play-by-play data between 1999 - 2021 and aggregate to game level data
+game_stats <- lapply(seasons_lst, FUN = function(x) {
+  
+  logger::log_info("Retrieving {x} game data...")
+  
+  # Get play-by-play data and summarize to game level
+  games <- nflfastR::load_pbp(x) %>% 
+    aggreg_games()
+  }
+) %>% 
+  dplyr::bind_rows()
+```
+
+```{r, eval = TRUE, echo = TRUE}
+# view game level data 
+game_stats %>% 
+  dplyr::glimpse()
+```
+
+<br>
+
+### **Team records**
+##### Next, we will retrieve game outcome data using `nflfastR::fast_scraper_schedules()` and run this data through the `get_schedule()` function I created. `get_schedule` will calculate the necessary columns we need for modeling and return a tibble ready to join with the rest of the game level data created above. 
+```{r, eval = FALSE, echo = TRUE}
+# pull schedules for every year and apply get_schedule()
+team_records <- lapply(seasons_lst, FUN = function(x) {
+
+  logger::log_info("Season schedules: {x}")
+
+  # Get season results
+  schedule <- nflfastR::fast_scraper_schedules(x) %>%
+    get_schedule()
+  }
+) %>%
+  dplyr::bind_rows()
+```
+
+```{r, eval = TRUE, echo = TRUE}
+team_records %>% 
+  dplyr::glimpse()
+```
+
+<br>
+
+### **Elo ratings**
+##### We can then take our team_records data frame and calculate Elo ratings for each season of data using `get_nfl_elo`
+```{r, eval = FALSE, echo = TRUE}
+# Filter team records to just home POV and split dataframe into list by season to then lapply() over
+nfl_split <- 
+  team_records %>% 
+  dplyr::filter(home_away == "home_team") %>%
+  dplyr::select(
+    season, week, game_id, team, opponent, 
+    win, home_score, away_score
+    ) %>% 
+  dplyr::group_by(season) %>% 
+  dplyr::group_split()
+
+# pull rosters for every year
+nfl_elo <- lapply(nfl_split, FUN = function(x) {
+  
+  elo_rating <- get_nfl_elo(x)
+  
+}
+) %>%
+  dplyr::bind_rows()
+```
+
+```{r, eval = TRUE, echo = TRUE}
+nfl_elo %>% 
+  dplyr::glimpse()
+```
+
+<br>
+
+### **Lagged data**
+##### Next, we need to create lagged versions of our data so *our model only has data for all the weeks leading up to the prediction week.* Using the helper functions, `rolling_offense`, `rolling_record`, `rolling_elo` we create lagged data and where it is appropriate we create lagged cumulative averages of our data.
+```{r, eval = FALSE, echo = TRUE}
+# cumalative offense
+lag_game_stats  <- rolling_offense(game_stats)
+
+# Cumalative win %
+lag_record      <- rolling_record(team_records)
+
+# lagged Elo ratings
+lag_elo         <- rolling_elo(nfl_elo)
+```
+
+<br>
+
+##### The lagged data frames will then all be joined together and we will create a dataset for the home team... 
+```{r, eval = FALSE, echo = TRUE}
+# lagged data from home team POV
+home_df <- 
+  lag_record %>% 
+  dplyr::select(
+    season, week, game_id, team, opponent, rest_days,
+    win_pct, home_win_pct, away_win_pct, win
+    ) %>% 
+  dplyr::left_join(
+    lag_game_stats,
+    by = c("season", "week", "game_id", "team" = "posteam")
+  ) %>% 
+  dplyr::left_join(
+    dplyr::select(lag_elo, game_id, team, elo),
+    by = c("game_id", "team")
+  )
+```
+
+<br>
+
+##### and a dataset for the away team...
+```{r, eval = FALSE, echo = TRUE}
+# lagged data from away team POV
+away_df <- 
+  lag_record %>% 
+  dplyr::select(
+    season, week, game_id, team, opponent, 
+    rest_days, win_pct, home_win_pct, away_win_pct, win
+    ) %>% 
+  dplyr::left_join(
+    lag_game_stats,
+    by = c("season", "week", "game_id", "team" = "posteam")
+  ) %>% 
+  dplyr::left_join(
+    dplyr::select(lag_elo, game_id, team, elo),
+    by = c("game_id", "team")
+  ) %>% 
+  setNames(c("season", "week", "game_id", "team", "opponent", paste0("opp_", names(.)[6:44]))) %>%
+  dplyr::select(-team)
+```
+
+<br>
+
+### **Final data for modelling**
+##### Finally, we join the **home_df** with the **away_df**, and we have our data set ready for modeling! 
+```{r, eval = FALSE, echo = TRUE}
+# Final join of all data
+model_data <- 
+  home_df %>% 
+  dplyr::left_join(
+    away_df,
+    by = c("season", "week", "game_id", "team" = "opponent")
+  ) %>% 
+  dplyr::select(
+    -div_game, -opp_win, -opp_home, -opp_div_game,
+    -contains("dscore"), -contains("qtr"), -contains("ndrives")
+    ) %>%                                                        # remove extraneous columns
+  dplyr::relocate(
+    season, week, game_id, team, opponent,
+    win, win_pct, home_win_pct, away_win_pct, home
+    )                                                            # logically order starting columns
+```
+
+```{r, eval = TRUE, echo = TRUE}
+# Glimpse the rows, columns of the final dataset for modelling, keeping only the home team POV
+model_data %>% 
+  dplyr::filter(home == 1) %>% 
+  dplyr::glimpse()
+```
+
+<br> 
+
+And here is a quick visualization of the number of games won each season by the home and away teams!
+```{r, fig.align='center'}
+  model_data %>%
+  dplyr::group_by(season, home) %>% 
+  dplyr::select(season, game_id, home, win) %>% 
+  na.omit() %>% 
+  dplyr::mutate(
+    home_away = dplyr::case_when(
+      home == 1 ~ "home",
+      home == 0 ~ "away"
+    )
+  ) %>% 
+  dplyr::ungroup() %>% 
+  dplyr::select(-home) %>%
+  tidyr::pivot_wider( names_from = "home_away", values_from = "win") %>% 
+  dplyr::group_by(season) %>% 
+  dplyr::summarise(
+    home_win = sum(home, na.rm = T),
+    away_win = sum(away, na.rm = T)
+  ) %>% 
+  tidyr::pivot_longer(cols = c(-season)) %>% 
+  ggplot2::ggplot() +
+  ggplot2::geom_line(aes(x = season, y = value, col = name)) +
+  ggplot2::scale_y_continuous(limits = c(0, 200), breaks = seq(0, 200, by = 50)) +
+  ggplot2::labs(
+    title    = "Total games Won", 
+    subtitle = "Home vs. Away teams",
+    col      = "", 
+    x        = "Season",
+    y        = "Games won per season"
+  ) +
+  ggplot2::theme_bw()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

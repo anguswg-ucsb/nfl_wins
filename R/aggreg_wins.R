@@ -38,6 +38,7 @@ seasons_lst <- 1999:2021
 pbp_stats <- lapply(seasons_lst, FUN = function(x) {
   
   logger::log_info("Retrieving {x} weekly team pbp stats...")
+  
   pbp <- nflfastR::load_pbp(x)
 }
 ) 
@@ -53,7 +54,7 @@ pbp_stats <- lapply(seasons_lst, FUN = function(x) {
 # calculate overall team offensive statistics from NFL play-by-play data
 off_stats <- lapply(pbp_stats, FUN = function(x) {
   
-  offense <- get_offense(x)
+  offense <- aggreg_games(x)
   }
 ) 
 
@@ -386,6 +387,7 @@ saveRDS(final_lag_data, here::here("data", "football_wins_lag_elo.rds"))
 # ********************************
 # ---- Get data for API model ----
 # ********************************
+
 # unique seasons
 seasons_lst <- 1999:2021
 
@@ -429,7 +431,7 @@ if(file.exists(here::here("data", "api_offense.rds"))) {
   # calculate overall team offensive statistics from NFL play-by-play data
   off_stats <- lapply(pbp_stats, FUN = function(x) {
     
-    offense <- get_offense2(x)
+    offense <- get_offense(x)
   }
   ) 
   

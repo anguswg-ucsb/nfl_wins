@@ -11,6 +11,7 @@ library(httr)
 library(jsonlite)
 library(rvest)
 library(elo)
+library(lubridate)
 
 source("utils/utils.R")
 
@@ -68,7 +69,8 @@ scrape_empty_schedule <- function(year) {
   return(page_table)
   
 }
-
+library(tidyverse)
+tmp <- scrape_empty_schedule(2022)
 # **************************
 # ---- Get model inputs ----
 # **************************
