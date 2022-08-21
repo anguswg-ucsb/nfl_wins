@@ -1,5 +1,8 @@
+---
+output: github_document
+---
 # **NFL Win Predictions using Machine Learning**
-##### This repository houses scripts and functions used for cleaning, aggregating and manipulating, NFL play-by-play data to feed into machine learning models that attempt to predict the winners of NFL games. The data used in modeling was obtained using the `nflfastR` package. All of the in-house functions mentioned below are located in the `utils.R` script in the `utils/` directory of this repo.
+##### This repository houses scripts and functions used for cleaning, aggregating and manipulating NFL play-by-play data to feed into machine learning models that attempt to predict the winners of NFL games. The data used in modeling was obtained using the `nflfastR` package. All of the in-house functions mentioned below are located in the `utils.R` script in the `utils/` directory of this repo.
 
 <style>
 div.blue { background-color:#e6f0ff; border-radius: 5px; padding: 20px;}
@@ -239,7 +242,7 @@ And here is a quick visualization of the number of games won each season by the 
   ) %>% 
   tidyr::pivot_longer(cols = c(-season)) %>% 
   ggplot2::ggplot() +
-  ggplot2::geom_line(aes(x = season, y = value, col = name)) +
+  ggplot2::geom_line(aes(x = season, y = value, col = name), size = 2) +
   ggplot2::scale_y_continuous(limits = c(0, 200), breaks = seq(0, 200, by = 50)) +
   ggplot2::labs(
     title    = "Total games Won", 
