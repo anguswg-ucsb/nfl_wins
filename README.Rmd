@@ -1,8 +1,21 @@
 ---
 output: github_document
 ---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+<!-- badges: start -->
+<!-- badges: end -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
 # **NFL Win Predictions using Machine Learning**
-##### This repository houses scripts and functions used for cleaning, aggregating and manipulating NFL play-by-play data to feed into machine learning models that attempt to predict the winners of NFL games. The data used in modeling was obtained using the `nflfastR` package. All of the in-house functions mentioned below are located in the `utils.R` script in the `utils/` directory of this repo.
+##### This repository houses scripts and utility functions used for cleaning, aggregating and manipulating NFL play-by-play data. The resulting aggregated data is then fed into a machine learning model workflow that attempts to predict the winners of NFL games. The raw NFL play-by-play data is obtained using the `nflfastR` package. All of the in-house functions mentioned throughout this document are located in the `utils.R` script in the `utils/` directory of this repo.
 
 <style>
 div.blue { background-color:#e6f0ff; border-radius: 5px; padding: 20px;}
@@ -253,16 +266,5 @@ And here is a quick visualization of the number of games won each season by the 
   ) +
   ggplot2::theme_bw()
 ```
-
-
-
-
-
-
-
-
-
-
-
 
 
