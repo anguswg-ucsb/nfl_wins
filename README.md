@@ -2,11 +2,6 @@
 output: github_document
 ---
 
-<!-- README.md is generated from README.Rmd. Please edit that file -->
-
-<!-- badges: start -->
-<!-- badges: end -->
-
 
 
 # **NFL Win Predictions using Machine Learning**
@@ -243,7 +238,7 @@ away_df <-
 
 <br>
 
-### **Final data for modelling**
+### **Final data for modeling**
 ##### Finally, we join the **home_df** with the **away_df**, and we have our data set ready for modeling! 
 
 ```r
@@ -344,6 +339,6 @@ And here is a quick visualization of the number of games won each season by the 
   ggplot2::theme_bw()
 ```
 
-<img src="figure/unnamed-chunk-147-1.png" title="plot of chunk unnamed-chunk-147" alt="plot of chunk unnamed-chunk-147" style="display: block; margin: auto;" />
+<img src="figure/unnamed-chunk-15-1.png" title="plot of chunk unnamed-chunk-15" alt="plot of chunk unnamed-chunk-15" style="display: block; margin: auto;" />
 
 

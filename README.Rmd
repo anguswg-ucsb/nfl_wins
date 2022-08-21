@@ -2,11 +2,6 @@
 output: github_document
 ---
 
-<!-- README.md is generated from README.Rmd. Please edit that file -->
-
-<!-- badges: start -->
-<!-- badges: end -->
-
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
@@ -204,7 +199,7 @@ away_df <-
 
 <br>
 
-### **Final data for modelling**
+### **Final data for modeling**
 ##### Finally, we join the **home_df** with the **away_df**, and we have our data set ready for modeling! 
 ```{r, eval = FALSE, echo = TRUE}
 # Final join of all data
