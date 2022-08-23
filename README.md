@@ -329,9 +329,13 @@ model_data %>%
     x        = "Season",
     y        = "Games won per season"
   ) +
-  ggplot2::theme_bw()
+  ggplot2::theme_bw() +
+  ggplot2::theme(
+    plot.title  = ggplot2::element_text(face = "bold", size = 16),
+    axis.title  = ggplot2::element_text(face = "bold", size = 14),
+    axis.text   = ggplot2::element_text(size = 12),
+    legend.text = ggplot2::element_text(size = 12)
+  )
 ```
 
-<img src="figure/unnamed-chunk-40-1.png" title="plot of chunk unnamed-chunk-40" alt="plot of chunk unnamed-chunk-40" style="display: block; margin: auto;" />
-
-
+<center>![](img/readme_wins_plot.png)</center>
