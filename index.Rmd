@@ -120,6 +120,20 @@ All data ingestion, processing, analysis, and modeling was done in R, with help 
 
 ------------------------------------------------------------------------
 
+# **REST API and nflpredictr**
+To access predictions from the models discussed in this document, I have built out a [REST API](http://68.183.25.9:8000/__docs__/) that scrapes current game data, feeds this data into the above Logistic Regression model, and returns predictions to end users. 
+
+I've also made an R package called [`nflpredictr`](https://github.com/anguswg-ucsb/nflpredictr) to accompany the REST API and to simplify the process of making requests to the API. The package can be installed from GitHub like so:
+
+```{r, eval = FALSE, echo = TRUE}
+# install.packages("devtools")
+devtools::install_github("anguswg-ucsb/nflpredictr")
+```
+
+<br> <br>
+
+------------------------------------------------------------------------
+
 # **Data Retrieval**
 To start, I pulled NFL play-by-play data together using the `nflfastR` R package —performing some cleaning and wrangling tasks to get the data into a usable format.
 
@@ -1894,8 +1908,6 @@ bad_week %>%
 One of the biggest limitations to these models, is that there is no accounting for injuries to players. A team that loses its starting quarterback or any key players to injury before or during the game is going to likely have a much worse shot of winning a game. I considered created a binary variable that indicated whether a team was missing its starting quarterback or was making a transition to a different quarterback. However I didn't end up doing this because I didn't have an easily accesible data with this information. I figured I could create my own variable indicating if a quarterback change was made using snap percentages but I didn't go down this path. I may address this in future, if I get an idea of how I want to do it. 
 
 I also wanted to include two other variables, **bad_win_pct** and **good_win_pct**, which would indicate the percent of games a team wins against teams under .500 and teams over .500, respectively. I didn't think of this them until I was finishing this write up, and chose not to go back and add them in. I'm planning on exploring these variables further in the future.
-
-I am currently working on a building out an REST API that will scrape current game data, feed this data into one of these models, and return predictions to end users. My goal is to have this operational by week 2 of the 2022 season.
 
 <br> 
 <br>
