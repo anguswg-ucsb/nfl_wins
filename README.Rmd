@@ -220,7 +220,7 @@ model_data %>%
 
 And here is a quick visualization from the aggregated **model_data**, showing the number of games won each season by the home and away teams!
 
-```{r, eval = FALSE, echo = TRUE}
+```{r, eval = FALSE, echo = TRUE, fig.align='center'}
 model_data %>%
   dplyr::group_by(season, home) %>% 
   dplyr::select(season, game_id, home, win) %>% 
@@ -260,5 +260,7 @@ model_data %>%
     legend.text = ggplot2::element_text(size = 12)
   )
 ```
+
+<br>
 
 <center>![](img/readme_wins_plot.png)</center>

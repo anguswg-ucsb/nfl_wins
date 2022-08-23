@@ -338,4 +338,6 @@ model_data %>%
   )
 ```
 
+<br>
+
 <center>![](img/readme_wins_plot.png)</center>
