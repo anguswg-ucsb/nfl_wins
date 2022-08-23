@@ -263,4 +263,8 @@ model_data %>%
 
 <br>
 
-<center>![](img/readme_wins_plot.png)</center>
+```{r, eval = TRUE, echo=FALSE, out.width="100%", fig.align='center'}
+# <center>![](img/readme_wins_plot.png)</center>
+knitr::include_graphics("img/readme_wins_plot.png")
+```
+
