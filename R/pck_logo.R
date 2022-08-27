@@ -1,7 +1,7 @@
 year = 2022
 week = 1
 wins <- nflpredictr::predict_games(year = 2022, week = 1)
-
+install.packages("hexSticker")
 library(hexSticker)
 tmp_gg <-
   wins %>%
@@ -46,3 +46,18 @@ s <- sticker(
 
 plot(s)
 print(s)
+
+# football_svg <- "C:/Users/angus/Downloads/football-solid.svg"
+# football_svg <- system.file("C:/Users/angus/Downloads/football-solid.svg")
+logo_png <- "C:/Users/angus/OneDrive - Lynker Technologies/Desktop/football_crystal_ball_purple2.png"
+# football_svg <- system.file("figures/cat.png", package="hexSticker")
+s <- sticker(logo_png, package="nflpredictr", 
+        p_size=20,
+        s_x=1, s_y=.75, s_width=0.35, s_height = 0.4,
+        h_fill   = "black",
+        h_color  = "white",
+        filename = "inst/figures/nflpredictr.png",
+        dpi = 500
+)
+plot(s)
+
